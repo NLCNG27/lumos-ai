@@ -21,7 +21,7 @@ export default function ChatWindow() {
             <div className="flex-grow p-4 overflow-y-auto space-y-4">
                 {messages.length === 0 ? (
                     <div className="text-center text-gray-500 mt-20">
-                        <p>👋 Hello! I'm Lumos AI. How can I help you today?</p>
+                        <p>👋 Hello! I&apos;m Lumos AI. How can I help you today?</p>
                     </div>
                 ) : (
                     messages.map((message) => (
