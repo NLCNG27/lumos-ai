@@ -36,7 +36,9 @@ export default function Home() {
         <ChatWindow />
 
         <p className="text-center text-sm text-gray-500 mt-6">
-          Powered by OpenAI's language models
+          &copy; {new Date().getFullYear()} Lumos AI. Developed by <a href="https://www.cngsoftware.com/" target="_blank" rel="noopener noreferrer" className="hover:underline">
+            CNG Software
+          </a>. All rights reserved.
         </p>
       </main>
     </div>
