@@ -1,5 +1,4 @@
 import { Message } from '@/app/types';
-import Image from 'next/image';
 
 type ChatMessageProps = {
     message: Message;
