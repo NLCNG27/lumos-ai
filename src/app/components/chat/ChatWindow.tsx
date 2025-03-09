@@ -41,6 +41,7 @@ export default function ChatWindow() {
                         <p>Lumos is thinking...</p>
                     </div>
                 )}
+
                 <div ref={messagesEndRef} />
             </div>
 
