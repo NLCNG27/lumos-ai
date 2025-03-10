@@ -5,7 +5,7 @@ import Image from 'next/image';
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-black p-4 sm:p-8">
       <header className="max-w-6xl mx-auto flex justify-between items-center mb-8">
         <div className="flex items-center gap-2">
           <Image
@@ -16,6 +16,7 @@ export default function Home() {
             className="dark:invert"
             priority
           />
+          
         </div>
 
         <a
@@ -29,9 +30,9 @@ export default function Home() {
       </header>
 
       <main className="max-w-4xl mx-auto">
-        <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-center">
+        {/* <h1 className="text-2xl sm:text-3xl font-bold mb-6 text-center">
           Chat with Lumos AI Assistant
-        </h1>
+        </h1> */}
 
         <ChatWindow />
 

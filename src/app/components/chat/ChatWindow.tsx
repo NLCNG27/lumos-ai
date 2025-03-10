@@ -13,7 +13,7 @@ export default function ChatWindow() {
     }, [messages]);
 
     return (
-        <div className="flex flex-col h-[80vh] bg-white dark:bg-gray-900 rounded-lg shadow-lg">
+        <div className="flex flex-col h-[80vh] bg-black dark:bg-black rounded-lg shadow-lg">
             <div className="p-4 border-b">
                 <h2 className="text-lg font-semibold">Lumos AI Assistant</h2>
             </div>
