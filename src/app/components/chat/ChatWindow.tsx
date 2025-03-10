@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
-import ChatMessage from './ChatMessage';
-import ChatInput from './ChatInput';
-import { useChat } from '@/app/hooks/useChat';
+import { useEffect, useRef } from "react";
+import ChatMessage from "./ChatMessage";
+import ChatInput from "./ChatInput";
+import { useChat } from "@/app/hooks/useChat";
 
 export default function ChatWindow() {
     const { messages, isLoading, error, sendMessage } = useChat();
@@ -9,7 +9,7 @@ export default function ChatWindow() {
 
     // Scroll to bottom when messages change
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
     return (
@@ -21,7 +21,10 @@ export default function ChatWindow() {
             <div className="flex-grow p-4 overflow-y-auto space-y-4">
                 {messages.length === 0 ? (
                     <div className="text-center text-gray-500 mt-20">
-                        <p>👋 Hello! I&apos;m Lumos AI. How can I help you today?</p>
+                        <p>
+                            👋 Hello! I&apos;m Lumos AI. How can I help you
+                            today?
+                        </p>
                     </div>
                 ) : (
                     messages.map((message) => (

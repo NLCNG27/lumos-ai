@@ -1,24 +1,39 @@
-import { Message } from '@/app/types';
+import { Message } from "@/app/types";
 
 type ChatMessageProps = {
     message: Message;
 };
 
 export default function ChatMessage({ message }: ChatMessageProps) {
-    const isUser = message.role === 'user';
+    const isUser = message.role === "user";
+
+    // Function to render content with newlines
+    const renderMessageWithNewlines = (content: string) => {
+        return content.split('\n').map((line, index) => (
+            <span key={index}>
+                {line}
+                {index < content.split('\n').length - 1 && <br />}
+            </span>
+        ));
+    };
 
     return (
-        <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
+        <div
+            className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}
+        >
             {!isUser && (
                 <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
                     <span className="text-white text-xs">AI</span>
                 </div>
             )}
-            <div className={`max-w-[80%] px-4 py-2 rounded-2xl ${isUser
-                    ? 'bg-blue-500 text-white rounded-tr-none'
-                    : 'bg-gray-100 dark:bg-gray-800 rounded-tl-none'
-                }`}>
-                <p className="text-sm">{message.content}</p>
+            <div
+                className={`max-w-[80%] px-4 py-2 rounded-2xl ${
+                    isUser
+                        ? "bg-blue-500 text-white rounded-tr-none"
+                        : "bg-gray-100 dark:bg-gray-800 rounded-tl-none"
+                }`}
+            >
+                <p className="text-sm">{renderMessageWithNewlines(message.content)}</p>
             </div>
             {isUser && (
                 <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center">
