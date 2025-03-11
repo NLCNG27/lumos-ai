@@ -19,18 +19,7 @@ export default function ChatInput({
 }: ChatInputProps) {
     const [input, setInput] = useState("");
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
-    const [hasPdfFiles, setHasPdfFiles] = useState(false);
     const formRef = useRef<HTMLFormElement>(null);
-
-    useEffect(() => {
-        // Check if any of the uploaded files are PDFs
-        const hasPdfs = uploadedFiles.some(
-            (file) =>
-                file.file.type === "application/pdf" ||
-                file.file.name.toLowerCase().endsWith(".pdf")
-        );
-        setHasPdfFiles(hasPdfs);
-    }, [uploadedFiles]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -108,80 +97,69 @@ export default function ChatInput({
         >
             <FilePreview files={uploadedFiles} onRemove={handleRemoveFile} />
 
-            <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                    <FileUpload
-                        onFileSelect={handleFileSelect}
-                        isLoading={isLoading}
-                    />
+            <div className="flex items-center gap-2">
+                <FileUpload
+                    onFileSelect={handleFileSelect}
+                    isLoading={isLoading}
+                />
 
-                    <textarea
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder={
-                            hasPdfFiles
-                                ? "What would you like to know about your PDF document?"
-                                : uploadedFiles.length > 0
-                                ? "Ask about your files or type a message... (Shift+Enter for new line)"
-                                : "Type your message... (Shift+Enter for new line)"
-                        }
-                        className="flex-grow p-2 rounded-lg border border-gray-300 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[40px] max-h-[120px] resize-y"
-                        disabled={isLoading}
-                        rows={1}
-                    />
+                <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={
+                        uploadedFiles.length > 0
+                            ? "Ask about your files or type a message... (Shift+Enter for new line)"
+                            : "Type your message... (Shift+Enter for new line)"
+                    }
+                    className="flex-grow p-2 rounded-lg border border-gray-300 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[40px] max-h-[120px] resize-y"
+                    disabled={isLoading}
+                    rows={1}
+                />
 
-                    <button
-                        type="submit"
-                        disabled={
-                            isLoading ||
-                            (!input.trim() && uploadedFiles.length === 0)
-                        }
-                        className="bg-blue-500 text-white p-2 rounded-full disabled:opacity-50"
-                    >
-                        {isLoading ? (
-                            <svg
-                                className="animate-spin h-5 w-5"
-                                viewBox="0 0 24 24"
-                            >
-                                <circle
-                                    className="opacity-25"
-                                    cx="12"
-                                    cy="12"
-                                    r="10"
-                                    stroke="currentColor"
-                                    strokeWidth="4"
-                                    fill="none"
-                                ></circle>
-                                <path
-                                    className="opacity-75"
-                                    fill="currentColor"
-                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                ></path>
-                            </svg>
-                        ) : (
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-5 w-5"
-                                viewBox="0 0 20 20"
+                <button
+                    type="submit"
+                    disabled={
+                        isLoading ||
+                        (!input.trim() && uploadedFiles.length === 0)
+                    }
+                    className="bg-blue-500 text-white p-2 rounded-full disabled:opacity-50"
+                >
+                    {isLoading ? (
+                        <svg
+                            className="animate-spin h-5 w-5"
+                            viewBox="0 0 24 24"
+                        >
+                            <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                                fill="none"
+                            ></circle>
+                            <path
+                                className="opacity-75"
                                 fill="currentColor"
-                            >
-                                <path
-                                    fillRule="evenodd"
-                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z"
-                                    clipRule="evenodd"
-                                />
-                            </svg>
-                        )}
-                    </button>
-                </div>
-
-                {hasPdfFiles && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 pl-9">
-                        Tip: For PDF files, try asking specific questions or
-                        describe the sections you need help with.
-                    </p>
-                )}
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                        </svg>
+                    ) : (
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-5 w-5"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                        >
+                            <path
+                                fillRule="evenodd"
+                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z"
+                                clipRule="evenodd"
+                            />
+                        </svg>
+                    )}
+                </button>
             </div>
         </form>
     );

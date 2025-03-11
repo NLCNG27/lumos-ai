@@ -13,40 +13,10 @@ type FilePreviewProps = {
 };
 
 export default function FilePreview({ files, onRemove }: FilePreviewProps) {
-    const [showLimitationWarning, setShowLimitationWarning] = useState(false);
-
-    useEffect(() => {
-        // Check if any files are PDFs or other complex formats
-        const hasComplexFiles = files.some((fileItem) => {
-            const fileType = fileItem.file.type;
-            const fileName = fileItem.file.name.toLowerCase();
-            return (
-                fileType === "application/pdf" ||
-                fileName.endsWith(".pdf") ||
-                fileType.includes("spreadsheetml") ||
-                fileType.includes("wordprocessingml") ||
-                fileName.endsWith(".docx") ||
-                fileName.endsWith(".xlsx")
-            );
-        });
-
-        setShowLimitationWarning(hasComplexFiles);
-    }, [files]);
-
     if (files.length === 0) return null;
 
     return (
         <div className="flex flex-col gap-2 mt-2 mb-2">
-            {showLimitationWarning && (
-                <div className="p-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-800 dark:text-amber-200">
-                    <p>
-                        <span className="font-medium">Note:</span> For PDFs and
-                        other complex documents, the AI may have limited ability
-                        to process their contents. Consider describing specific
-                        sections or information you're looking for.
-                    </p>
-                </div>
-            )}
             <div className="flex flex-wrap gap-2">
                 {files.map((fileItem) => (
                     <FileItem
