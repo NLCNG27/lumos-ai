@@ -19,14 +19,14 @@ export default function Home() {
                     />
                 </div>
 
-                <a
+                {/* <a
                     href="https://github.com/yourusername/lumos-ai"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm hover:underline"
                 >
                     GitHub
-                </a>
+                </a> */}
             </header>
 
             <main className="max-w-4xl mx-auto">
