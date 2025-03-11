@@ -34,6 +34,16 @@
         input[type="file"] {
             margin: 10px 0;
         }
+        #debug {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f0f0f0;
+            font-family: monospace;
+            font-size: 12px;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -48,14 +58,17 @@
     <button id="submit">Submit</button>
     
     <div id="result"></div>
+    <div id="debug"></div>
     
     <script>
         document.getElementById('submit').addEventListener('click', async () => {
             const messageText = document.getElementById('message').value;
             const files = document.getElementById('fileInput').files;
             const resultDiv = document.getElementById('result');
+            const debugDiv = document.getElementById('debug');
             
             resultDiv.textContent = "Processing...";
+            debugDiv.style.display = "none";
             
             // Process files if any
             const fileDataArray = [];
@@ -103,6 +116,12 @@
                 
                 const data = await response.json();
                 resultDiv.textContent = data.content;
+                
+                // Show debug info if available
+                if (data.__debug) {
+                    debugDiv.style.display = "block";
+                    debugDiv.textContent = "Debug Info:\n" + JSON.stringify(data.__debug, null, 2);
+                }
             } catch (error) {
                 resultDiv.textContent = `Error: ${error.message}`;
                 console.error("Error:", error);
