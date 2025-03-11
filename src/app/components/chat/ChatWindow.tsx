@@ -45,7 +45,7 @@ export default function ChatWindow() {
                     </div>
                 )}
 
-                <div ref={messagesEndRef} />
+                <div ref={messagesEndRef} /> 
             </div>
 
             <ChatInput onSendMessage={sendMessage} isLoading={isLoading} />
