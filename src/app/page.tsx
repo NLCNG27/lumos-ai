@@ -10,12 +10,12 @@ export default function Home() {
             <header className="max-w-6xl mx-auto flex justify-between items-center mb-8">
                 <div className="flex items-center gap-2">
                     <Image
-                        src="/next.svg"
+                        src="/logo.png"
                         alt="Lumos AI"
-                        width={120}
+                        width={300}
                         height={30}
-                        className="dark:invert"
-                        priority
+                        // className="dark:invert"
+                        // priority
                     />
                 </div>
 
