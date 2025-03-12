@@ -74,7 +74,7 @@ export default function FileUpload({
                 multiple
                 onChange={handleFileSelect}
                 className="hidden"
-                accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls"
+                accept="image/*,.pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.cs,.go,.rb,.php,.html,.css,.xml,.json,.yaml,.yml,.md,.sh,.bash,.ps1,.sql,.r,.swift,.kt,.dart,.lua,.pl,.vue,.svelte,.config,.conf,.env,.gitignore"
                 disabled={isLoading}
             />
 

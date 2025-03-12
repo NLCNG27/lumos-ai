@@ -561,6 +561,66 @@ async function processFiles(files: FileData[]): Promise<{
                     ).toFixed(1)} KB) ---\n[Error extracting text content]\n\n`;
                     hasUnprocessableFiles = true;
                 }
+            } else if (
+                // Code files - handle common programming languages
+                file.type === "text/x-python" || file.name.endsWith(".py") || file.name.endsWith(".pyw") ||
+                file.type === "application/javascript" || file.name.endsWith(".js") || file.name.endsWith(".jsx") ||
+                file.type === "text/typescript" || file.name.endsWith(".ts") || file.name.endsWith(".tsx") ||
+                file.type === "text/x-java" || file.name.endsWith(".java") || file.name.endsWith(".kt") ||
+                file.type === "text/x-c" || file.name.endsWith(".c") || file.name.endsWith(".cpp") || file.name.endsWith(".h") || file.name.endsWith(".hpp") ||
+                file.type === "text/x-csharp" || file.name.endsWith(".cs") ||
+                file.type === "text/x-go" || file.name.endsWith(".go") ||
+                file.type === "text/x-rust" || file.name.endsWith(".rs") ||
+                file.type === "text/x-ruby" || file.name.endsWith(".rb") ||
+                file.type === "text/x-php" || file.name.endsWith(".php") ||
+                file.type === "text/x-swift" || file.name.endsWith(".swift") ||
+                file.type === "text/x-scala" || file.name.endsWith(".scala") ||
+                file.type === "text/x-kotlin" || file.name.endsWith(".kt") ||
+                file.type === "text/html" || file.name.endsWith(".html") || file.name.endsWith(".htm") ||
+                file.type === "text/css" || file.name.endsWith(".css") ||
+                file.type === "text/x-sql" || file.name.endsWith(".sql") ||
+                file.type === "text/x-yaml" || file.name.endsWith(".yaml") || file.name.endsWith(".yml") ||
+                file.type === "text/x-toml" || file.name.endsWith(".toml") ||
+                file.name.endsWith(".xml") || file.name.endsWith(".xsl") ||
+                file.name.endsWith(".sh") || file.name.endsWith(".bash") ||
+                file.name.endsWith(".ps1") || file.name.endsWith(".psm1") ||
+                file.name.endsWith(".r") || file.name.endsWith(".dart") ||
+                file.name.endsWith(".lua") || file.name.endsWith(".pl") ||
+                file.name.endsWith(".pm") || file.name.endsWith(".dockerfile") ||
+                file.name.endsWith(".tf") || file.name.endsWith(".hcl") ||
+                file.name.endsWith(".vue") || file.name.endsWith(".svelte") ||
+                file.name.endsWith(".md") || file.name.endsWith(".markdown") ||
+                file.name.endsWith(".gitignore") || file.name.endsWith(".env") ||
+                file.name.endsWith(".config") || file.name.endsWith(".conf")
+            ) {
+                // For code files, extract the content with special formatting
+                try {
+                    const base64Content = file.content.split(",")[1];
+                    const codeContent = Buffer.from(
+                        base64Content,
+                        "base64"
+                    ).toString("utf-8");
+
+                    // Get the file extension for language detection
+                    const fileExt = file.name.split('.').pop()?.toLowerCase() || '';
+                    
+                    // Add special formatting for code files
+                    fileContents += `--- Code File: ${file.name} (${(
+                        file.size / 1024
+                    ).toFixed(1)} KB) ---\n`;
+                    fileContents += `Language: ${getLanguageFromExtension(fileExt)}\n`;
+                    fileContents += "```" + fileExt + "\n";
+                    fileContents += codeContent;
+                    fileContents += "\n```\n\n";
+                    
+                    console.log(`Successfully processed code file: ${file.name}`);
+                } catch (error) {
+                    console.error("Error extracting code content:", error);
+                    fileContents += `--- Code File: ${file.name} (${(
+                        file.size / 1024
+                    ).toFixed(1)} KB) ---\n[Error extracting code content]\n\n`;
+                    hasUnprocessableFiles = true;
+                }
             } else if (file.type.startsWith("image/")) {
                 // For images, store the data URL for the vision model
                 fileContents += `--- Image: ${file.name} (${(
@@ -882,6 +942,76 @@ const detectFileTypeFromContent = (buffer: Buffer): string | null => {
     }
     
     return null;
+};
+
+// Helper function to map file extensions to language names
+const getLanguageFromExtension = (extension: string): string => {
+    const languageMap: Record<string, string> = {
+        // Web technologies
+        'html': 'HTML',
+        'htm': 'HTML',
+        'css': 'CSS',
+        'js': 'JavaScript',
+        'jsx': 'JavaScript (React)',
+        'ts': 'TypeScript',
+        'tsx': 'TypeScript (React)',
+        'json': 'JSON',
+        
+        // Backend languages
+        'py': 'Python',
+        'pyw': 'Python',
+        'java': 'Java',
+        'c': 'C',
+        'cpp': 'C++',
+        'h': 'C/C++ Header',
+        'hpp': 'C++ Header',
+        'cs': 'C#',
+        'go': 'Go',
+        'rs': 'Rust',
+        'rb': 'Ruby',
+        'php': 'PHP',
+        'swift': 'Swift',
+        'scala': 'Scala',
+        'kt': 'Kotlin',
+        
+        // Shell and scripting
+        'sh': 'Shell Script',
+        'bash': 'Bash Script',
+        'ps1': 'PowerShell',
+        'psm1': 'PowerShell Module',
+        
+        // Data and config
+        'sql': 'SQL',
+        'yaml': 'YAML',
+        'yml': 'YAML',
+        'toml': 'TOML',
+        'xml': 'XML',
+        'xsl': 'XSL',
+        
+        // Other languages
+        'r': 'R',
+        'dart': 'Dart',
+        'lua': 'Lua',
+        'pl': 'Perl',
+        'pm': 'Perl Module',
+        
+        // Framework-specific
+        'vue': 'Vue.js',
+        'svelte': 'Svelte',
+        
+        // Documentation and config
+        'md': 'Markdown',
+        'markdown': 'Markdown',
+        'gitignore': 'Git Configuration',
+        'env': 'Environment Variables',
+        'config': 'Configuration File',
+        'conf': 'Configuration File',
+        'dockerfile': 'Dockerfile',
+        'tf': 'Terraform',
+        'hcl': 'HCL',
+    };
+    
+    return languageMap[extension] || 'Unknown';
 };
 
 // Helper function to extract text from PDFs using PDF.js
