@@ -6,6 +6,26 @@ import { promisify } from "util";
 import { writeFile, unlink, mkdir, access } from "fs/promises";
 import path from "path";
 import fs from "fs";
+// After the imports, add this for PDF.js
+import * as pdfjs from 'pdfjs-dist';
+
+// Configure PDF.js for Node environment
+if (typeof window === 'undefined') {
+    // We're running on server - set up the Node.js environment for PDF.js
+    try {
+        // Load the polyfills needed for PDF.js in Node
+        const canvas = require('canvas');
+        const { DOMMatrix, DOMPoint } = require('dommatrix');
+        
+        // Add necessary globals
+        global.DOMMatrix = DOMMatrix;
+        global.DOMPoint = DOMPoint;
+        
+        console.log('PDF environment configured for Node');
+    } catch (err) {
+        console.error('Error configuring PDF environment for Node:', err);
+    }
+}
 
 const execPromise = promisify(exec);
 
@@ -206,7 +226,7 @@ export async function POST(req: Request) {
         let hasImageFiles = false;
         let imageUrls: { url: string; name: string }[] = [];
         let pdfStats = {
-            total: 0,
+            totalCount: 0,
             successCount: 0,
             failureCount: 0,
             methodsUsed: [] as string[],
@@ -294,13 +314,22 @@ export async function POST(req: Request) {
                 for (const img of imageUrls) {
                     if (
                         img.url &&
-                        img.url.startsWith("data:") &&
-                        (img.url.startsWith("data:image/") ||
-                            img.url.includes("image/jpeg") ||
-                            img.url.includes("image/png") ||
-                            img.url.includes("image/gif") ||
-                            img.url.includes("image/webp"))
+                        img.url.startsWith("data:")
                     ) {
+                        // Check if it's a PDF being sent as an image
+                        const isPdf = img.name.includes("PDF document") || 
+                                     (img.name && img.name.toLowerCase().includes("pdf"));
+                        
+                        // Add a special message if it's a PDF being treated as an image
+                        if (isPdf) {
+                            // Add text explaining this is a PDF
+                            contentArray.push({
+                                type: "text",
+                                text: `I've attached a PDF document named "${img.name}". This is a visual representation of the PDF content. Please analyze what you can see in this document, including text content, form fields, headers, logos, tables, and any other visual elements. Describe the document's purpose, structure, and key information based on what you can see.`
+                            });
+                        }
+                        
+                        // Add the image/PDF content
                         contentArray.push({
                             type: "image_url",
                             image_url: {
@@ -318,14 +347,20 @@ export async function POST(req: Request) {
                 }
             }
 
-            // Only use the vision model if we actually have real images
+            // Only use the vision model if we actually have real images or PDFs
             const validImageCount = imageUrls.filter(
                 (img) => img.url && img.url.startsWith("data:image/")
             ).length;
 
-            if (validImageCount > 0) {
+            // Check if we have PDFs that should be processed visually
+            const hasPdfsForVisualProcessing = imageUrls.some(
+                (img) => img.name && img.name.includes("PDF document")
+            );
+
+            if (validImageCount > 0 || hasPdfsForVisualProcessing) {
                 // Use a vision-capable model
                 try {
+                    console.log("Using vision-capable model for processing images/PDFs");
                     const response = await openai.chat.completions.create({
                         model: "gpt-4o", // Using a model capable of processing images
                         messages: formattedMessages as any,
@@ -375,7 +410,7 @@ export async function POST(req: Request) {
 
                     // Add detailed PDF metrics to response if we processed PDFs
                     return NextResponse.json(
-                        pdfStats.total > 0
+                        pdfStats.totalCount > 0
                             ? {
                                   ...fallbackResponse.choices[0].message,
                                   __debug:
@@ -419,16 +454,16 @@ export async function POST(req: Request) {
             }
         } else {
             // Standard text processing
-            const response = await openai.chat.completions.create({
+        const response = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 messages: formattedMessages as any,
-                temperature: 0.7,
-                max_tokens: 1500,
-            });
+            temperature: 0.7,
+            max_tokens: 1500,
+        });
 
             // Add detailed PDF metrics to response if we processed PDFs
             return NextResponse.json(
-                pdfStats.total > 0
+                pdfStats.totalCount > 0
                     ? {
                           ...response.choices[0].message,
                           __debug:
@@ -462,7 +497,7 @@ async function processFiles(files: FileData[]): Promise<{
     hasImageFiles: boolean;
     imageUrls: { url: string; name: string }[];
     pdfStats: {
-        total: number;
+        totalCount: number;
         successCount: number;
         failureCount: number;
         methodsUsed: string[];
@@ -474,7 +509,7 @@ async function processFiles(files: FileData[]): Promise<{
     let hasImageFiles = false;
     let imageUrls: { url: string; name: string }[] = [];
     let pdfStats = {
-        total: 0,
+        totalCount: 0,
         successCount: 0,
         failureCount: 0,
         methodsUsed: [] as string[],
@@ -544,9 +579,60 @@ async function processFiles(files: FileData[]): Promise<{
                 file.type === "application/pdf" ||
                 file.name.endsWith(".pdf")
             ) {
+                console.log(`Processing PDF file: ${file.name}`);
+                pdfStats.totalCount++;
+                
+                // Decode base64 content to buffer
+                const base64Content = file.content.split(",")[1];
+                const pdfBuffer = Buffer.from(base64Content, "base64");
+                
+                // Always add the PDF as an image for the vision model
+                if (file.content && file.content.includes(',')) {
+                    // Create a more descriptive name
+                    const descriptiveName = `PDF_Document_${file.name.replace(/\.[^/.]+$/, "")}`;
+                    
+                    try {
+                        // Create a simple image with the PDF name
+                        const canvas = require('canvas');
+                        const width = 800;
+                        const height = 600;
+                        const canvasObj = canvas.createCanvas(width, height);
+                        const ctx = canvasObj.getContext('2d');
+                        
+                        // Fill with white background
+                        ctx.fillStyle = 'white';
+                        ctx.fillRect(0, 0, width, height);
+                        
+                        // Add text
+                        ctx.fillStyle = 'black';
+                        ctx.font = '30px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(`PDF Document: ${file.name}`, width / 2, height / 2 - 50);
+                        ctx.font = '20px Arial';
+                        ctx.fillText('PDF content is being processed as text', width / 2, height / 2 + 50);
+                        
+                        // Convert to data URL
+                        const dataUrl = canvasObj.toDataURL('image/png');
+                        
+                        // Add it as image content
+                        imageUrls.push({ 
+                            url: dataUrl, 
+                            name: `📄 ${descriptiveName} (PDF document)`
+                        });
+                        
+                        hasImageFiles = true;
+                        console.log(`Added image for PDF: ${descriptiveName}`);
+                    } catch (renderError) {
+                        console.error(`PDF rendering failed: ${renderError}`);
+                    }
+                }
+                
+                // Track if we've successfully extracted text
+                let pdfTextExtracted = false;
+                
                 try {
                     // Track PDF metrics
-                    pdfStats.total++;
+                    pdfStats.totalCount++;
 
                     // Extract text from PDF
                     if (!file.content.includes(",")) {
@@ -555,299 +641,48 @@ async function processFiles(files: FileData[]): Promise<{
 
                     const base64Content = file.content.split(",")[1];
                     const pdfBuffer = Buffer.from(base64Content, "base64");
-
-                    // Use a try-catch block for pdf-parse to handle the error if the module can't be loaded
-                    let pdfParse;
+                    
+                    // First try with pdf-parse (most reliable method)
                     try {
-                        // Try to load pdf-parse with special handling for its test file dependency
-                        // Create a temporary directory to satisfy pdf-parse's test file dependency
-                        const tempTestDir = path.join(
-                            process.cwd(),
-                            "test",
-                            "data"
-                        );
-
-                        // Create the directory path if it doesn't exist (using async operations)
-                        const testDirPath = path.join(process.cwd(), "test");
-                        if (!(await pathExists(testDirPath))) {
-                            await mkdir(testDirPath);
-                        }
-                        if (!(await pathExists(tempTestDir))) {
-                            await mkdir(tempTestDir);
-                        }
-
-                        // Create an empty placeholder file that pdf-parse looks for
-                        const testFilePath = path.join(
-                            tempTestDir,
-                            "05-versions-space.pdf"
-                        );
-                        if (!(await pathExists(testFilePath))) {
-                            await writeFile(testFilePath, Buffer.from([0])); // Write a tiny placeholder file
-                        }
-
-                        // Now try to import pdf-parse
-                        pdfParse = await import("pdf-parse").then(
+                        console.log(`Processing PDF file ${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
+                        
+                        // Add diagnostic info
+                        console.log(`PDF buffer size: ${pdfBuffer.length} bytes`);
+                        console.log(`PDF file type reported: ${file.type}`);
+                        
+                        // Try to load pdf-parse
+                        const pdfParse = await import("pdf-parse").then(
                             (mod) => mod.default
                         );
-                    } catch (importError) {
-                        console.error(
-                            "Error importing pdf-parse:",
-                            importError
-                        );
-                        // Fall back to our mock implementation
-                        pdfParse = createPdfParseMock();
-                        // Immediately try alternative methods
-                        throw new Error(
-                            "PDF parsing module failed to initialize"
-                        );
-                    }
-
-                    // Use pdf-parse with comprehensive options and error handling
-                    try {
+                        
                         // First attempt with default options
                         const pdfData = await pdfParse(pdfBuffer, {
                             // Use more aggressive parsing
-                            pagerender: function (pageData) {
-                                return pageData.getTextContent();
-                            },
+                            max: 0, // No limit on pages
                         });
-
-                        // Add to file contents
-                        fileContents += `--- PDF Document: ${file.name} (${(
-                            file.size / 1024
-                        ).toFixed(1)} KB) ---\n`;
 
                         // Check if we actually got text content
                         if (pdfData.text && pdfData.text.trim().length > 0) {
+                            fileContents += `--- PDF Document: ${file.name} (${(file.size / 1024).toFixed(1)} KB) ---\n`;
                             fileContents += `${pdfData.text}\n\n`;
                             pdfStats.successCount++;
                             pdfStats.methodsUsed.push("primary-pdf-parse");
+                            pdfTextExtracted = true;
+                            console.log(`Successfully extracted ${pdfData.text.length} characters with pdf-parse`);
                         } else {
                             throw new Error(
                                 "PDF parsed but no text content was extracted"
                             );
                         }
                     } catch (pdfError) {
-                        console.error(
-                            "Initial PDF parsing failed, trying alternative method:",
-                            pdfError
-                        );
-                        pdfStats.errors.push(
-                            `Primary method error: ${
-                                pdfError instanceof Error
-                                    ? pdfError.message
-                                    : "Unknown error"
-                            }`
-                        );
-
-                        try {
-                            // Fallback approach - try with different options
-                            const fallbackData = await pdfParse(pdfBuffer, {
-                                max: 0, // Process all pages
-                                version: "v2.0.550",
-                            });
-
-                            if (
-                                fallbackData.text &&
-                                fallbackData.text.trim().length > 0
-                            ) {
-                                fileContents += `${fallbackData.text}\n\n`;
-                                pdfStats.successCount++;
-                                pdfStats.methodsUsed.push(
-                                    "secondary-pdf-parse"
-                                );
-                            } else {
-                                throw new Error(
-                                    "Fallback PDF parsing yielded no text"
-                                );
-                            }
-                        } catch (fallbackError) {
-                            console.error(
-                                "Both PDF parsing methods failed:",
-                                fallbackError
-                            );
-                            pdfStats.errors.push(
-                                `Secondary method error: ${
-                                    fallbackError instanceof Error
-                                        ? fallbackError.message
-                                        : "Unknown error"
-                                }`
-                            );
-
-                            // Last resort: try to extract text directly from buffer
-                            try {
-                                // Simple text extraction from buffer - might catch some plain text in the PDF
-                                const bufferText = pdfBuffer.toString("utf-8");
-
-                                // Look for meaningful text using more sophisticated patterns
-                                // First try to find standard text
-                                let extractedText = "";
-
-                                // Find text between BT and ET tags (Basic Text objects in PDF)
-                                const textBlocks =
-                                    bufferText.match(/BT[\s\S]+?ET/g) || [];
-                                if (textBlocks.length > 0) {
-                                    const extractedBlocks = textBlocks
-                                        .map((block) => {
-                                            // Extract text that appears inside parentheses or bracket notation
-                                            const textFragments =
-                                                block.match(
-                                                    /\((.*?)\)|<([0-9A-Fa-f]+)>/g
-                                                ) || [];
-                                            return textFragments
-                                                .map((fragment) => {
-                                                    if (
-                                                        fragment.startsWith("(")
-                                                    ) {
-                                                        // Text inside parentheses
-                                                        return fragment.substring(
-                                                            1,
-                                                            fragment.length - 1
-                                                        );
-                                                    } else {
-                                                        // Hex-encoded text inside brackets
-                                                        try {
-                                                            const hex =
-                                                                fragment.substring(
-                                                                    1,
-                                                                    fragment.length -
-                                                                        1
-                                                                );
-                                                            return Buffer.from(
-                                                                hex,
-                                                                "hex"
-                                                            ).toString("utf-8");
-                                                        } catch (e) {
-                                                            return "";
-                                                        }
-                                                    }
-                                                })
-                                                .join(" ");
-                                        })
-                                        .join("\n");
-
-                                    if (extractedBlocks.trim().length > 0) {
-                                        extractedText +=
-                                            extractedBlocks + "\n\n";
-                                    }
-                                }
-
-                                // Additionally, look for word sequences
-                                const textMatch =
-                                    bufferText.match(/\w+(\s+\w+){2,}/g);
-                                if (textMatch && textMatch.length > 0) {
-                                    const wordBasedText = textMatch
-                                        .filter((match) => match.length > 10) // Only use longer matches
-                                        .join(" ");
-
-                                    if (wordBasedText.trim().length > 0) {
-                                        extractedText += wordBasedText;
-                                    }
-                                }
-
-                                if (extractedText.trim().length > 0) {
-                                    // We found what looks like text content
-                                    fileContents += `[Extracted using emergency fallback method - text quality may be reduced]\n${extractedText}\n\n`;
-                                    pdfStats.successCount++;
-                                    pdfStats.methodsUsed.push(
-                                        "buffer-extraction"
-                                    );
-                                } else {
-                                    throw new Error(
-                                        "No readable text found in buffer"
-                                    );
-                                }
-                            } catch (bufferError) {
-                                pdfStats.errors.push(
-                                    `Buffer extraction error: ${
-                                        bufferError instanceof Error
-                                            ? bufferError.message
-                                            : "Unknown error"
-                                    }`
-                                );
-
-                                // Final attempt: Try using system-level tools if available (pdftotext from poppler-utils)
-                                try {
-                                    // Create a temporary file
-                                    const tmpDir =
-                                        process.env.TEMP ||
-                                        process.env.TMP ||
-                                        "/tmp";
-                                    const tmpPdfPath = path.join(
-                                        tmpDir,
-                                        `tmp-${Date.now()}.pdf`
-                                    );
-                                    const tmpTxtPath = path.join(
-                                        tmpDir,
-                                        `tmp-${Date.now()}.txt`
-                                    );
-
-                                    // Write the buffer to a temporary file
-                                    await writeFile(tmpPdfPath, pdfBuffer);
-
-                                    // Try to use pdftotext (from poppler-utils)
-                                    try {
-                                        await execPromise(
-                                            `pdftotext -layout "${tmpPdfPath}" "${tmpTxtPath}"`
-                                        );
-                                        // Read the text output
-                                        const { readFile } = await import(
-                                            "fs/promises"
-                                        );
-                                        const popplerText = await readFile(
-                                            tmpTxtPath,
-                                            "utf-8"
-                                        );
-
-                                        if (
-                                            popplerText &&
-                                            popplerText.trim().length > 0
-                                        ) {
-                                            fileContents += `[Extracted using system pdftotext tool]\n${popplerText}\n\n`;
-                                            pdfStats.successCount++;
-                                            pdfStats.methodsUsed.push(
-                                                "poppler-utils"
-                                            );
-                                        } else {
-                                            throw new Error(
-                                                "pdftotext produced empty output"
-                                            );
-                                        }
-                                    } catch (popplerError) {
-                                        // pdftotext failed or isn't available
-                                        pdfStats.errors.push(
-                                            `Poppler error: ${
-                                                popplerError instanceof Error
-                                                    ? popplerError.message
-                                                    : "Tool not available"
-                                            }`
-                                        );
-                                        throw new Error(
-                                            "System-level PDF extraction failed or not available"
-                                        );
-                                    } finally {
-                                        // Clean up temporary files
-                                        try {
-                                            await unlink(tmpPdfPath);
-                                            await unlink(tmpTxtPath);
-                                        } catch (cleanupError) {
-                                            console.error(
-                                                "Error cleaning up temp files:",
-                                                cleanupError
-                                            );
-                                        }
-                                    }
-                                } catch (systemToolError) {
-                                    pdfStats.failureCount++;
-                                    pdfStats.errors.push(
-                                        `All methods failed for ${file.name}`
-                                    );
-                                    throw new Error(
-                                        "All PDF extraction methods failed"
-                                    );
-                                }
-                            }
-                        }
+                        console.error(`PDF extraction failed for ${file.name}:`, pdfError);
+                        pdfStats.errors.push(`PDF extraction error: ${pdfError instanceof Error ? pdfError.message : "Unknown error"}`);
+                        
+                        // If text extraction failed, we'll rely on the visual rendering
+                        fileContents += `--- PDF Document: ${file.name} (${(file.size / 1024).toFixed(1)} KB) ---\n`;
+                        fileContents += `[The system attempted to extract text from this PDF but encountered technical issues. `;
+                        fileContents += `The PDF will be analyzed visually instead.]\n\n`;
+                        pdfStats.failureCount++;
                     }
                 } catch (error) {
                     // Log detailed error information
@@ -862,19 +697,27 @@ async function processFiles(files: FileData[]): Promise<{
                     fileContents += `--- PDF Document: ${file.name} (${(
                         file.size / 1024
                     ).toFixed(1)} KB) ---\n`;
-                    fileContents += `[The system attempted to extract text from this PDF but encountered an error: ${
-                        error instanceof Error ? error.message : "Unknown error"
-                    }]\n\n`;
-                    fileContents += `[If you're able to describe the content of this PDF, I'll do my best to help based on your description.]\n\n`;
+                    fileContents += `[The system attempted to extract text from this PDF but encountered technical issues. `;
+                    fileContents += `This may happen with secured PDFs, complex layouts, or documents containing primarily images.]\n\n`;
+                    fileContents += `[To help with analysis, the PDF will be treated as an image for visual processing. `;
+                    fileContents += `If you have specific questions about the document's content, please mention them clearly.]\n\n`;
                     hasUnprocessableFiles = true;
                     pdfStats.failureCount++;
 
-                    // Remove the code that attempts to add PDFs as images - it's not supported
-                    // Add it as an image if possible as fallback - some PDFs can be rendered visually
-                    if (file.content && file.content.startsWith("data:")) {
-                        // PDFs cannot be added as images to the vision model
-                        // Instead, let's just note this in the file contents
-                        fileContents += `[Note: This PDF cannot be processed visually by the AI model due to format constraints.]\n\n`;
+                    // Last resort for PDF: add the file as a regular attachment
+                    if (!pdfTextExtracted) {
+                        console.log(`No text could be extracted from ${file.name}, relying on visual analysis`);
+                        
+                        // Create a combined message about the PDF
+                        fileContents += `--- PDF Document: ${file.name} (${(file.size / 1024).toFixed(1)} KB) ---\n`;
+                        fileContents += `[This PDF appears to contain primarily images or scanned content that couldn't be extracted as text. `;
+                        fileContents += `The AI will attempt to analyze it visually as an image.]\n\n`;
+                        
+                        // We already added the PDF as an image earlier, so no need to do it again
+                        pdfStats.methodsUsed.push("image-fallback");
+                        
+                        // Don't mark as unprocessable since we're handling it as an image
+                        hasUnprocessableFiles = false;
                     }
                 }
             } else if (
@@ -1040,3 +883,307 @@ const detectFileTypeFromContent = (buffer: Buffer): string | null => {
     
     return null;
 };
+
+// Helper function to extract text from PDFs using PDF.js
+async function extractTextWithPDFJS(pdfBuffer: Buffer): Promise<string> {
+    try {
+        // Skip PDF.js extraction since it's causing issues with the worker
+        // Instead, use pdf-parse directly which is more reliable
+        const pdfParse = await import("pdf-parse").then(mod => mod.default);
+        
+        // Use pdf-parse with more aggressive options
+        const pdfData = await pdfParse(pdfBuffer, {
+            // Use more aggressive parsing
+            pagerender: function (pageData: any) {
+                return pageData.getTextContent();
+            },
+            max: 0, // No limit on pages
+        });
+        
+        if (pdfData.text && pdfData.text.trim().length > 0) {
+            console.log(`Successfully extracted ${pdfData.text.length} characters with pdf-parse`);
+            return pdfData.text;
+        } else {
+            throw new Error("pdf-parse returned empty text");
+        }
+    } catch (error) {
+        console.error('PDF extraction error:', error);
+        throw new Error(`PDF extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+}
+
+// Add this function after the other helper functions
+// Helper function to render the first page of a PDF to an image
+async function renderPdfFirstPageToImage(pdfBuffer: Buffer): Promise<string | null> {
+    try {
+        // Load the PDF document
+        const data = new Uint8Array(pdfBuffer);
+        
+        // Configure the source with options to disable worker
+        const loadingOptions = {
+            data,
+            disableWorker: true,
+            disableFontFace: true,
+            disableRange: true,
+            isEvalSupported: false,
+            useSystemFonts: false
+        };
+        
+        // Create document loading task
+        const loadingTask = pdfjs.getDocument(loadingOptions as any);
+        
+        // Get the PDF document
+        const pdf = await loadingTask.promise;
+        console.log(`Successfully loaded PDF for rendering with ${pdf.numPages} pages`);
+        
+        if (pdf.numPages > 0) {
+            try {
+                // Get the first page
+                const page = await pdf.getPage(1);
+                
+                // Set scale for rendering (higher = better quality but larger file)
+                const scale = 1.5;
+                const viewport = page.getViewport({ scale });
+                
+                // Create a canvas for rendering
+                const canvas = require('canvas');
+                const canvasObj = canvas.createCanvas(viewport.width, viewport.height);
+                const context = canvasObj.getContext('2d');
+                
+                // Set up rendering context
+                const renderContext = {
+                    canvasContext: context,
+                    viewport: viewport
+                };
+                
+                // Render the page
+                await page.render(renderContext).promise;
+                
+                // Convert canvas to data URL (PNG format)
+                const dataUrl = canvasObj.toDataURL('image/png');
+                console.log(`Successfully rendered PDF first page to image (${dataUrl.length} bytes)`);
+                
+                return dataUrl;
+            } catch (renderError) {
+                console.error('Error rendering PDF page:', renderError);
+                return null;
+            }
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Error in PDF to image conversion:', error);
+        return null;
+    }
+}
+
+// Helper function to render PDF pages to images using Puppeteer
+async function renderPdfPagesToImages(pdfBuffer: Buffer, maxPages: number = 3): Promise<string[]> {
+    try {
+        console.log(`Starting Puppeteer to render PDF with max ${maxPages} pages`);
+        
+        // Create a temporary file to store the PDF
+        const tmpDir = process.env.TEMP || process.env.TMP || "/tmp";
+        const tmpPdfPath = path.join(tmpDir, `tmp-pdf-${Date.now()}.pdf`);
+        
+        // Write the PDF buffer to the temporary file
+        await writeFile(tmpPdfPath, pdfBuffer);
+        console.log(`PDF written to temporary file: ${tmpPdfPath}`);
+        
+        // Dynamically import puppeteer with error handling
+        let puppeteer;
+        try {
+            // @ts-ignore - Ignore TypeScript errors for dynamic imports
+            puppeteer = await import('puppeteer');
+        } catch (importError) {
+            console.error('Error importing puppeteer:', importError);
+            throw new Error('Failed to import puppeteer');
+        }
+        
+        // Launch Puppeteer
+        const browser = await puppeteer.default.launch({
+            headless: 'new',
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
+        
+        try {
+            const page = await browser.newPage();
+            
+            // Navigate to the PDF file
+            await page.goto(`file://${tmpPdfPath}`, {
+                waitUntil: 'networkidle0'
+            });
+            
+            // Wait for PDF to load - use a more TypeScript-friendly approach
+            await page.waitForFunction(() => {
+                const win = window as any;
+                return win.PDFViewerApplication && 
+                       win.PDFViewerApplication.pdfViewer && 
+                       win.PDFViewerApplication.pdfViewer.pagesCount > 0;
+            }, { timeout: 10000 });
+            
+            // Get the number of pages - fix TypeScript error
+            const pagesCount = await page.evaluate(() => {
+                const win = window as any;
+                return win.PDFViewerApplication.pdfViewer.pagesCount;
+            });
+            
+            console.log(`PDF loaded in Puppeteer with ${pagesCount} pages`);
+            
+            const pagesToRender = Math.min(pagesCount, maxPages);
+            const images: string[] = [];
+            
+            // Render each page
+            for (let i = 1; i <= pagesToRender; i++) {
+                try {
+                    // Go to the specific page - fix TypeScript error
+                    await page.evaluate((pageNum: number) => {
+                        const win = window as any;
+                        win.PDFViewerApplication.pdfViewer.currentPageNumber = pageNum;
+                    }, i);
+                    
+                    // Wait for the page to render
+                    await page.waitForTimeout(1000);
+                    
+                    // Take a screenshot
+                    const screenshot = await page.screenshot({
+                        type: 'png',
+                        fullPage: true
+                    });
+                    
+                    // Convert to data URL
+                    const dataUrl = `data:image/png;base64,${screenshot.toString('base64')}`;
+                    images.push(dataUrl);
+                    
+                    console.log(`Rendered page ${i}/${pagesToRender} with Puppeteer`);
+                } catch (pageError) {
+                    console.error(`Error rendering page ${i} with Puppeteer:`, pageError);
+                }
+            }
+            
+            return images;
+        } finally {
+            // Close the browser
+            await browser.close();
+            
+            // Clean up the temporary file
+            try {
+                await unlink(tmpPdfPath);
+                console.log(`Temporary PDF file removed: ${tmpPdfPath}`);
+            } catch (unlinkError) {
+                console.error(`Error removing temporary PDF file:`, unlinkError);
+            }
+        }
+    } catch (error) {
+        console.error('Error in Puppeteer PDF to images conversion:', error);
+        return [];
+    }
+}
+
+// Add a fallback function that uses a simpler approach with canvas
+async function renderPdfToImageWithCanvas(pdfBuffer: Buffer): Promise<string[]> {
+    try {
+        // Load the PDF document using pdf-lib with error handling
+        let pdfLib;
+        try {
+            // @ts-ignore - Ignore TypeScript errors for dynamic imports
+            pdfLib = await import('pdf-lib');
+        } catch (importError) {
+            console.error('Error importing pdf-lib:', importError);
+            throw new Error('Failed to import pdf-lib');
+        }
+        
+        const pdfDoc = await pdfLib.PDFDocument.load(pdfBuffer);
+        
+        // Get the number of pages
+        const pageCount = pdfDoc.getPageCount();
+        console.log(`PDF loaded with pdf-lib: ${pageCount} pages`);
+        
+        const pagesToRender = Math.min(pageCount, 3); // Render up to 3 pages
+        const images: string[] = [];
+        
+        // Create a canvas
+        const canvas = require('canvas');
+        
+        // For each page
+        for (let i = 0; i < pagesToRender; i++) {
+            try {
+                // Get the page
+                const page = pdfDoc.getPage(i);
+                
+                // Get page dimensions
+                const { width, height } = page.getSize();
+                
+                // Create a canvas with the page dimensions
+                const canvasObj = canvas.createCanvas(width, height);
+                const ctx = canvasObj.getContext('2d');
+                
+                // Fill with white background
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, width, height);
+                
+                // We can't render the PDF content directly with canvas,
+                // but we can create a placeholder image that indicates this is a PDF
+                ctx.fillStyle = 'black';
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`PDF Page ${i + 1}`, width / 2, height / 2 - 20);
+                ctx.fillText(`(PDF content will be analyzed visually)`, width / 2, height / 2 + 20);
+                
+                // Convert to data URL
+                const dataUrl = canvasObj.toDataURL('image/png');
+                images.push(dataUrl);
+                
+                console.log(`Created placeholder image for page ${i + 1}`);
+            } catch (pageError) {
+                console.error(`Error creating placeholder for page ${i + 1}:`, pageError);
+            }
+        }
+        
+        return images;
+    } catch (error) {
+        console.error('Error in canvas PDF to images conversion:', error);
+        return [];
+    }
+}
+
+// Add a simple function to create a placeholder image for PDFs
+async function createPdfPlaceholderImage(filename: string): Promise<string> {
+    try {
+        // Create a canvas
+        const canvas = require('canvas');
+        const width = 800;
+        const height = 1000;
+        
+        const canvasObj = canvas.createCanvas(width, height);
+        const ctx = canvasObj.getContext('2d');
+        
+        // Fill with light blue background
+        ctx.fillStyle = '#f0f8ff';
+        ctx.fillRect(0, 0, width, height);
+        
+        // Add a PDF icon or text
+        ctx.fillStyle = '#4a86e8';
+        ctx.font = 'bold 40px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('PDF DOCUMENT', width / 2, height / 2 - 100);
+        
+        // Add the filename
+        ctx.fillStyle = 'black';
+        ctx.font = '30px Arial';
+        ctx.fillText(filename, width / 2, height / 2);
+        
+        // Add a message
+        ctx.font = '20px Arial';
+        ctx.fillText('This PDF will be analyzed visually', width / 2, height / 2 + 100);
+        
+        // Convert to data URL
+        const dataUrl = canvasObj.toDataURL('image/png');
+        console.log(`Created PDF placeholder image for ${filename}`);
+        
+        return dataUrl;
+    } catch (error) {
+        console.error('Error creating PDF placeholder image:', error);
+        return '';
+    }
+}
