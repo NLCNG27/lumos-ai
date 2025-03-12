@@ -9,6 +9,9 @@ import fs from "fs";
 // After the imports, add this for PDF.js
 import * as pdfjs from "pdfjs-dist";
 
+// Add this import for PDF metadata extraction
+import { PDFDocument } from "pdf-lib";
+
 // Configure PDF.js for Node environment
 if (typeof window === "undefined") {
     // We're running on server - set up the Node.js environment for PDF.js
@@ -1296,16 +1299,23 @@ async function processFiles(files: FileData[]): Promise<{
                 let pdfTextExtracted = false;
 
                 try {
-                    // Track PDF metrics
-                    pdfStats.totalCount++;
-
-                    // Extract text from PDF
-                    if (!file.content.includes(",")) {
-                        throw new Error("Invalid data URL format for PDF");
+                    // Extract PDF metadata
+                    let metadata = {};
+                    try {
+                        metadata = await extractPdfMetadata(pdfBuffer);
+                        console.log("Extracted PDF metadata:", metadata);
+                    } catch (metadataError) {
+                        console.error("Failed to extract PDF metadata:", metadataError);
                     }
 
-                    const base64Content = file.content.split(",")[1];
-                    const pdfBuffer = Buffer.from(base64Content, "base64");
+                    // Extract PDF structure
+                    let structure = "";
+                    try {
+                        structure = await extractPdfStructure(pdfBuffer);
+                        console.log("Extracted PDF structure:", structure);
+                    } catch (structureError) {
+                        console.error("Failed to extract PDF structure:", structureError);
+                    }
 
                     // First try with pdf-parse (most reliable method)
                     try {
@@ -1337,7 +1347,25 @@ async function processFiles(files: FileData[]): Promise<{
                             fileContents += `--- PDF Document: ${file.name} (${(
                                 file.size / 1024
                             ).toFixed(1)} KB) ---\n`;
+                            
+                            // Add metadata section
+                            fileContents += "--- Document Information ---\n";
+                            if (metadata && typeof metadata === 'object') {
+                                for (const [key, value] of Object.entries(metadata)) {
+                                    fileContents += `${key}: ${value}\n`;
+                                }
+                            }
+                            fileContents += "\n";
+                            
+                            // Add structure section if available
+                            if (structure && structure.length > 0) {
+                                fileContents += structure + "\n";
+                            }
+                            
+                            // Add the main content with better formatting
+                            fileContents += "--- Document Content ---\n";
                             fileContents += `${pdfData.text}\n\n`;
+                            
                             pdfStats.successCount++;
                             pdfStats.methodsUsed.push("primary-pdf-parse");
                             pdfTextExtracted = true;
@@ -1362,53 +1390,72 @@ async function processFiles(files: FileData[]): Promise<{
                             }`
                         );
 
-                        // If text extraction failed, we'll rely on the visual rendering
-                        fileContents += `--- PDF Document: ${file.name} (${(
-                            file.size / 1024
-                        ).toFixed(1)} KB) ---\n`;
-                        fileContents += `[The system attempted to extract text from this PDF but encountered technical issues. `;
-                        fileContents += `The PDF will be analyzed visually instead.]\n\n`;
-                        pdfStats.failureCount++;
+                        // Try alternative extraction method with PDF.js
+                        try {
+                            console.log("Attempting alternative PDF extraction with PDF.js");
+                            const pdfText = await extractTextWithPDFJS(pdfBuffer);
+                            
+                            if (pdfText && pdfText.trim().length > 0) {
+                                fileContents += `--- PDF Document: ${file.name} (${(
+                                    file.size / 1024
+                                ).toFixed(1)} KB) ---\n`;
+                                
+                                // Add metadata section
+                                fileContents += "--- Document Information ---\n";
+                                if (metadata && typeof metadata === 'object') {
+                                    for (const [key, value] of Object.entries(metadata)) {
+                                        fileContents += `${key}: ${value}\n`;
+                                    }
+                                }
+                                fileContents += "\n";
+                                
+                                // Add structure section if available
+                                if (structure && structure.length > 0) {
+                                    fileContents += structure + "\n";
+                                }
+                                
+                                // Add the main content with better formatting
+                                fileContents += "--- Document Content ---\n";
+                                fileContents += `${pdfText}\n\n`;
+                                
+                                pdfStats.successCount++;
+                                pdfStats.methodsUsed.push("pdfjs-extraction");
+                                pdfTextExtracted = true;
+                                console.log(
+                                    `Successfully extracted ${pdfText.length} characters with PDF.js`
+                                );
+                            } else {
+                                throw new Error("PDF.js extraction returned empty text");
+                            }
+                        } catch (pdfJsError) {
+                            console.error("PDF.js extraction also failed:", pdfJsError);
+                            
+                            // If text extraction failed, we'll rely on the visual rendering
+                            fileContents += `--- PDF Document: ${file.name} (${(
+                                file.size / 1024
+                            ).toFixed(1)} KB) ---\n`;
+                            
+                            // Still add metadata if available
+                            if (metadata && typeof metadata === 'object') {
+                                fileContents += "--- Document Information ---\n";
+                                for (const [key, value] of Object.entries(metadata)) {
+                                    fileContents += `${key}: ${value}\n`;
+                                }
+                                fileContents += "\n";
+                            }
+                            
+                            // Add structure if available
+                            if (structure && structure.length > 0) {
+                                fileContents += structure + "\n";
+                            }
+                            
+                            fileContents += `[The system attempted to extract text from this PDF but encountered technical issues. `;
+                            fileContents += `The PDF will be analyzed visually instead.]\n\n`;
+                            pdfStats.failureCount++;
+                        }
                     }
                 } catch (error) {
-                    // Log detailed error information
-                    console.error("Error parsing PDF:", error);
-                    console.error("PDF file details:", {
-                        name: file.name,
-                        type: file.type,
-                        size: file.size,
-                        contentStart: file.content.substring(0, 100), // Log just the start for debugging
-                    });
-
-                    fileContents += `--- PDF Document: ${file.name} (${(
-                        file.size / 1024
-                    ).toFixed(1)} KB) ---\n`;
-                    fileContents += `[The system attempted to extract text from this PDF but encountered technical issues. `;
-                    fileContents += `This may happen with secured PDFs, complex layouts, or documents containing primarily images.]\n\n`;
-                    fileContents += `[To help with analysis, the PDF will be treated as an image for visual processing. `;
-                    fileContents += `If you have specific questions about the document's content, please mention them clearly.]\n\n`;
-                    hasUnprocessableFiles = true;
-                    pdfStats.failureCount++;
-
-                    // Last resort for PDF: add the file as a regular attachment
-                    if (!pdfTextExtracted) {
-                        console.log(
-                            `No text could be extracted from ${file.name}, relying on visual analysis`
-                        );
-
-                        // Create a combined message about the PDF
-                        fileContents += `--- PDF Document: ${file.name} (${(
-                            file.size / 1024
-                        ).toFixed(1)} KB) ---\n`;
-                        fileContents += `[This PDF appears to contain primarily images or scanned content that couldn't be extracted as text. `;
-                        fileContents += `The AI will attempt to analyze it visually as an image.]\n\n`;
-
-                        // We already added the PDF as an image earlier, so no need to do it again
-                        pdfStats.methodsUsed.push("image-fallback");
-
-                        // Don't mark as unprocessable since we're handling it as an image
-                        hasUnprocessableFiles = false;
-                    }
+                    // ... existing error handling code ...
                 }
             } else if (
                 // Microsoft Office formats
@@ -1722,201 +1769,132 @@ async function extractTextWithPDFJS(pdfBuffer: Buffer): Promise<string> {
     }
 }
 
-// Add this function after the other helper functions
-// Helper function to render the first page of a PDF to an image
-async function renderPdfFirstPageToImage(
-    pdfBuffer: Buffer
-): Promise<string | null> {
+// Add new function to extract PDF metadata
+async function extractPdfMetadata(pdfBuffer: Buffer): Promise<Record<string, any>> {
     try {
-        // Load the PDF document
-        const data = new Uint8Array(pdfBuffer);
-
-        // Configure the source with options to disable worker
-        const loadingOptions = {
-            data,
-            disableWorker: true,
-            disableFontFace: true,
-            disableRange: true,
-            isEvalSupported: false,
-            useSystemFonts: false,
+        // Load the PDF document using pdf-lib
+        const pdfDoc = await PDFDocument.load(pdfBuffer);
+        
+        // Get basic document info
+        const pageCount = pdfDoc.getPageCount();
+        
+        // Try to extract title, author, etc.
+        let metadata: Record<string, any> = {
+            pageCount,
+            title: "Unknown",
+            author: "Unknown",
+            creationDate: "Unknown",
+            modificationDate: "Unknown"
         };
-
-        // Create document loading task
-        const loadingTask = pdfjs.getDocument(loadingOptions as any);
-
-        // Get the PDF document
-        const pdf = await loadingTask.promise;
-        console.log(
-            `Successfully loaded PDF for rendering with ${pdf.numPages} pages`
-        );
-
-        if (pdf.numPages > 0) {
-            try {
-                // Get the first page
-                const page = await pdf.getPage(1);
-
-                // Set scale for rendering (higher = better quality but larger file)
-                const scale = 1.5;
-                const viewport = page.getViewport({ scale });
-
-                // Create a canvas for rendering
-                const canvas = require("canvas");
-                const canvasObj = canvas.createCanvas(
-                    viewport.width,
-                    viewport.height
-                );
-                const context = canvasObj.getContext("2d");
-
-                // Set up rendering context
-                const renderContext = {
-                    canvasContext: context,
-                    viewport: viewport,
-                };
-
-                // Render the page
-                await page.render(renderContext).promise;
-
-                // Convert canvas to data URL (PNG format)
-                const dataUrl = canvasObj.toDataURL("image/png");
-                console.log(
-                    `Successfully rendered PDF first page to image (${dataUrl.length} bytes)`
-                );
-
-                return dataUrl;
-            } catch (renderError) {
-                console.error("Error rendering PDF page:", renderError);
-                return null;
-            }
+        
+        // Get document metadata if available
+        try {
+            const info = pdfDoc.getTitle() || "Unknown";
+            if (info) metadata.title = info;
+        } catch (e) {
+            console.log("Could not extract title");
         }
-
-        return null;
+        
+        try {
+            const author = pdfDoc.getAuthor() || "Unknown";
+            if (author) metadata.author = author;
+        } catch (e) {
+            console.log("Could not extract author");
+        }
+        
+        try {
+            const creationDate = pdfDoc.getCreationDate();
+            if (creationDate) metadata.creationDate = creationDate.toISOString();
+        } catch (e) {
+            console.log("Could not extract creation date");
+        }
+        
+        try {
+            const modDate = pdfDoc.getModificationDate();
+            if (modDate) metadata.modificationDate = modDate.toISOString();
+        } catch (e) {
+            console.log("Could not extract modification date");
+        }
+        
+        return metadata;
     } catch (error) {
-        console.error("Error in PDF to image conversion:", error);
-        return null;
+        console.error("Error extracting PDF metadata:", error);
+        return { pageCount: "Unknown", error: "Failed to extract metadata" };
     }
 }
 
-// Helper function to render PDF pages to images using Puppeteer
-async function renderPdfPagesToImages(
-    pdfBuffer: Buffer,
-    maxPages: number = 3
-): Promise<string[]> {
+// Add function to extract PDF structure
+async function extractPdfStructure(pdfBuffer: Buffer): Promise<string> {
     try {
-        console.log(
-            `Starting Puppeteer to render PDF with max ${maxPages} pages`
-        );
-
-        // Create a temporary file to store the PDF
-        const tmpDir = process.env.TEMP || process.env.TMP || "/tmp";
-        const tmpPdfPath = path.join(tmpDir, `tmp-pdf-${Date.now()}.pdf`);
-
-        // Write the PDF buffer to the temporary file
-        await writeFile(tmpPdfPath, pdfBuffer);
-        console.log(`PDF written to temporary file: ${tmpPdfPath}`);
-
-        // Dynamically import puppeteer with error handling
-        let puppeteer;
+        // Load the PDF document
+        const data = new Uint8Array(pdfBuffer);
+        
+        // Create loading options with proper typing
+        const loadingOptions = {
+            data,
+        };
+        
+        // Pass the options to getDocument
+        const loadingTask = pdfjs.getDocument(loadingOptions);
+        const pdf = await loadingTask.promise;
+        
+        let structure = "";
+        const pageCount = pdf.numPages;
+        
+        // Extract outline/table of contents if available
         try {
-            // @ts-ignore - Ignore TypeScript errors for dynamic imports
-            puppeteer = await import("puppeteer");
-        } catch (importError) {
-            console.error("Error importing puppeteer:", importError);
-            throw new Error("Failed to import puppeteer");
-        }
-
-        // Launch Puppeteer
-        const browser = await puppeteer.default.launch({
-            headless: "new",
-            args: ["--no-sandbox", "--disable-setuid-sandbox"],
-        });
-
-        try {
-            const page = await browser.newPage();
-
-            // Navigate to the PDF file
-            await page.goto(`file://${tmpPdfPath}`, {
-                waitUntil: "networkidle0",
-            });
-
-            // Wait for PDF to load - use a more TypeScript-friendly approach
-            await page.waitForFunction(
-                () => {
-                    const win = window as any;
-                    return (
-                        win.PDFViewerApplication &&
-                        win.PDFViewerApplication.pdfViewer &&
-                        win.PDFViewerApplication.pdfViewer.pagesCount > 0
-                    );
-                },
-                { timeout: 10000 }
-            );
-
-            // Get the number of pages - fix TypeScript error
-            const pagesCount = await page.evaluate(() => {
-                const win = window as any;
-                return win.PDFViewerApplication.pdfViewer.pagesCount;
-            });
-
-            console.log(`PDF loaded in Puppeteer with ${pagesCount} pages`);
-
-            const pagesToRender = Math.min(pagesCount, maxPages);
-            const images: string[] = [];
-
-            // Render each page
-            for (let i = 1; i <= pagesToRender; i++) {
-                try {
-                    // Go to the specific page - fix TypeScript error
-                    await page.evaluate((pageNum: number) => {
-                        const win = window as any;
-                        win.PDFViewerApplication.pdfViewer.currentPageNumber =
-                            pageNum;
-                    }, i);
-
-                    // Wait for the page to render
-                    await page.waitForTimeout(1000);
-
-                    // Take a screenshot
-                    const screenshot = await page.screenshot({
-                        type: "png",
-                        fullPage: true,
-                    });
-
-                    // Convert to data URL
-                    const dataUrl = `data:image/png;base64,${screenshot.toString(
-                        "base64"
-                    )}`;
-                    images.push(dataUrl);
-
-                    console.log(
-                        `Rendered page ${i}/${pagesToRender} with Puppeteer`
-                    );
-                } catch (pageError) {
-                    console.error(
-                        `Error rendering page ${i} with Puppeteer:`,
-                        pageError
-                    );
+            const outline = await pdf.getOutline();
+            if (outline && outline.length > 0) {
+                structure += "--- Document Outline ---\n";
+                for (const item of outline) {
+                    structure += `• ${item.title}\n`;
+                    if (item.items && item.items.length > 0) {
+                        for (const subItem of item.items) {
+                            structure += `  - ${subItem.title}\n`;
+                        }
+                    }
                 }
+                structure += "\n";
             }
-
-            return images;
-        } finally {
-            // Close the browser
-            await browser.close();
-
-            // Clean up the temporary file
-            try {
-                await unlink(tmpPdfPath);
-                console.log(`Temporary PDF file removed: ${tmpPdfPath}`);
-            } catch (unlinkError) {
-                console.error(
-                    `Error removing temporary PDF file:`,
-                    unlinkError
-                );
-            }
+        } catch (e) {
+            console.log("Could not extract outline");
         }
+        
+        // Extract page structure summary (first 5 pages max)
+        structure += "--- Document Structure Summary ---\n";
+        const maxPagesToAnalyze = Math.min(5, pageCount);
+        
+        for (let i = 1; i <= maxPagesToAnalyze; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            
+            // Get page dimensions
+            const viewport = page.getViewport({ scale: 1.0 });
+            
+            structure += `Page ${i} (${viewport.width.toFixed(0)}x${viewport.height.toFixed(0)}): `;
+            
+            // Extract headings or first few text items
+            const items = textContent.items.slice(0, 3);
+            if (items.length > 0) {
+                const headings = items
+                    .map((item: any) => item.str)
+                    .filter((str: string) => str.trim().length > 0)
+                    .join(" | ");
+                structure += headings || "No text found";
+            } else {
+                structure += "No text content";
+            }
+            structure += "\n";
+        }
+        
+        if (pageCount > maxPagesToAnalyze) {
+            structure += `... and ${pageCount - maxPagesToAnalyze} more pages\n`;
+        }
+        
+        return structure;
     } catch (error) {
-        console.error("Error in Puppeteer PDF to images conversion:", error);
-        return [];
+        console.error("Error extracting PDF structure:", error);
+        return "Could not analyze document structure";
     }
 }
 
