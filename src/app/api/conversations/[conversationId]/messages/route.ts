@@ -8,9 +8,9 @@ import {
 // Get all messages for a conversation
 export async function GET(
     request: NextRequest,
-    params: Promise<{ conversationId: string }>
+    { params }: { params: Promise<{ conversationId: string }> }
 ) {
-    const { conversationId } = await params;
+    const conversationId = (await params).conversationId;
     const auth_obj = await auth();
     const userId = auth_obj.userId;
 
@@ -33,9 +33,9 @@ export async function GET(
 // Add a new message to a conversation
 export async function POST(
     request: NextRequest,
-    params: Promise<{ conversationId: string }>
+    { params }: { params: Promise<{ conversationId: string }> }
 ) {
-    const { conversationId } = await params;
+    const conversationId = (await params).conversationId;
     const auth_obj = await auth();
     const userId = auth_obj.userId;
 
