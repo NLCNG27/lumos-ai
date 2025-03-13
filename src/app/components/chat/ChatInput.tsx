@@ -20,6 +20,7 @@ export default function ChatInput({
     const [input, setInput] = useState("");
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
     const formRef = useRef<HTMLFormElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -78,6 +79,51 @@ export default function ChatInput({
         });
     };
 
+    // Handle paste events to capture images from clipboard
+    const handlePaste = async (e: ClipboardEvent) => {
+        if (isLoading) return;
+
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        const imageItems = Array.from(items).filter((item) =>
+            item.type.startsWith("image/")
+        );
+
+        if (imageItems.length === 0) return;
+
+        // Prevent default paste behavior only if we have images
+        // This allows text to still be pasted normally
+        if (imageItems.length > 0) {
+            e.preventDefault();
+        }
+
+        const files: File[] = [];
+
+        for (const item of imageItems) {
+            const file = item.getAsFile();
+            if (file) {
+                files.push(file);
+            }
+        }
+
+        if (files.length > 0) {
+            await handleFileSelect(files);
+        }
+    };
+
+    // Add paste event listener
+    useEffect(() => {
+        const textarea = textareaRef.current;
+        if (textarea) {
+            textarea.addEventListener("paste", handlePaste);
+
+            return () => {
+                textarea.removeEventListener("paste", handlePaste);
+            };
+        }
+    }, [isLoading]); // Re-add listener if isLoading changes
+
     // Clean up object URLs when component unmounts
     useEffect(() => {
         return () => {
@@ -104,13 +150,14 @@ export default function ChatInput({
                 />
 
                 <textarea
+                    ref={textareaRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={
                         uploadedFiles.length > 0
                             ? "Ask about your files or type a message... (Shift+Enter for new line)"
-                            : "Type your message... (Shift+Enter for new line)"
+                            : "Type your message... (Shift+Enter for new line, Paste to add images)"
                     }
                     className="flex-grow p-2 rounded-lg border border-gray-300 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[40px] max-h-[120px] resize-y"
                     disabled={isLoading}
