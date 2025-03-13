@@ -26,4 +26,3 @@ For code files, you can:
 You can also help with general questions and tasks.
 
 Be conversational but focused in your responses. Provide accurate information based on the file content, and if you're unsure about something, acknowledge the limitations.`;
-

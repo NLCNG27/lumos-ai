@@ -16,7 +16,11 @@ import { PDFDocument } from "pdf-lib";
 import { addDocument, queryDocument } from "@/app/lib/documentManager";
 import { createDocumentSummary } from "@/app/lib/documentProcessor";
 // Import our new simple PDF extractor
-import { extractPdfText, extractPdfMetadata as simplePdfMetadata, extractPdfStructure } from "@/app/lib/simplePdfExtractor";
+import {
+    extractPdfText,
+    extractPdfMetadata as simplePdfMetadata,
+    extractPdfStructure,
+} from "@/app/lib/simplePdfExtractor";
 
 // Configure PDF.js for Node environment
 if (typeof window === "undefined") {
@@ -282,21 +286,31 @@ export async function POST(req: Request) {
                 // Additional processing for RAG with PDFs
                 for (const file of files) {
                     // Only process PDFs for document understanding
-                    if (file.type === "application/pdf" || file.name.toLowerCase().endsWith('.pdf')) {
+                    if (
+                        file.type === "application/pdf" ||
+                        file.name.toLowerCase().endsWith(".pdf")
+                    ) {
                         try {
                             const base64Data = file.content.split(",")[1]; // Remove data URL prefix
                             const buffer = Buffer.from(base64Data, "base64");
-                            
+
                             // Use our new simple extractor
                             const pdfText = await extractPdfText(buffer);
-                            
+
                             if (pdfText && pdfText.trim()) {
                                 // Process the document (chunk and store in vector db)
-                                const docInfo = await addDocument(pdfText, file.name);
+                                const docInfo = await addDocument(
+                                    pdfText,
+                                    file.name,
+                                    false
+                                );
                                 processedDocsInfo.push(docInfo);
                             }
                         } catch (fileError) {
-                            console.error(`Error processing file ${file.name}:`, fileError);
+                            console.error(
+                                `Error processing file ${file.name}:`,
+                                fileError
+                            );
                         }
                     }
                 }
@@ -311,25 +325,37 @@ export async function POST(req: Request) {
         // @ts-ignore - TypeScript doesn't recognize the filtered messages type
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
-        const lastUserMessage = messages.filter((m: { role: string }) => m.role === "user").pop();
-            
+        const lastUserMessage = messages
+            .filter((m: { role: string }) => m.role === "user")
+            .pop();
+
         // If we have processed documents and a user query, perform retrieval
         if (processedDocsInfo.length > 0 && lastUserMessage) {
             // For each processed document, get relevant chunks
             for (const docInfo of processedDocsInfo) {
                 try {
-                    const relevantChunks = await queryDocument(docInfo.id, lastUserMessage.content, 3);
-                    
+                    const relevantChunks = await queryDocument(
+                        docInfo.id,
+                        lastUserMessage.content,
+                        3
+                    );
+
                     if (relevantChunks.length > 0) {
                         // Create context from relevant chunks
                         const contextFromDoc = relevantChunks
-                            .map(chunk => `--- From document "${docInfo.fileName}" ---\n${chunk.pageContent}\n`)
+                            .map(
+                                (chunk) =>
+                                    `--- From document "${docInfo.fileName}" ---\n${chunk.pageContent}\n`
+                            )
                             .join("\n");
-                        
+
                         documentContext += contextFromDoc + "\n\n";
                     }
                 } catch (queryError) {
-                    console.error(`Error querying document ${docInfo.id}:`, queryError);
+                    console.error(
+                        `Error querying document ${docInfo.id}:`,
+                        queryError
+                    );
                 }
             }
         }
@@ -930,72 +956,94 @@ export async function POST(req: Request) {
 
         // Modify the existing function to incorporate document understanding
         // Find where the API routes processes the user message and modify it
-        
+
         // Inside the route.ts file, find the section that handles user messages and insert this:
-        
+
         try {
             const { messages, files } = await req.json();
-            
+
             // Process files if present
             const processedDocsInfo = [];
             let documentContext = "";
-            
+
             if (files && files.length > 0) {
                 for (const file of files) {
                     // Only process PDFs for document understanding
-                    if (file.type === "application/pdf" || file.name.toLowerCase().endsWith('.pdf')) {
+                    if (
+                        file.type === "application/pdf" ||
+                        file.name.toLowerCase().endsWith(".pdf")
+                    ) {
                         try {
                             const base64Data = file.content.split(",")[1]; // Remove data URL prefix
                             const buffer = Buffer.from(base64Data, "base64");
-                            
+
                             // Use our new simple extractor
                             const pdfText = await extractPdfText(buffer);
-                            
+
                             if (pdfText && pdfText.trim()) {
                                 // Process the document (chunk and store in vector db)
-                                const docInfo = await addDocument(pdfText, file.name);
+                                const docInfo = await addDocument(
+                                    pdfText,
+                                    file.name,
+                                    false
+                                );
                                 processedDocsInfo.push(docInfo);
                             }
                         } catch (fileError) {
-                            console.error(`Error processing file ${file.name}:`, fileError);
+                            console.error(
+                                `Error processing file ${file.name}:`,
+                                fileError
+                            );
                         }
                     }
                 }
             }
-            
+
             // Get the last user message
-            const lastUserMessage = messages.filter((m: { role: string }) => m.role === "user").pop();
-            
+            const lastUserMessage = messages
+                .filter((m: { role: string }) => m.role === "user")
+                .pop();
+
             // If we have processed documents and a user query, perform retrieval
             if (processedDocsInfo.length > 0 && lastUserMessage) {
                 // For each processed document, get relevant chunks
                 for (const docInfo of processedDocsInfo) {
                     try {
-                        const relevantChunks = await queryDocument(docInfo.id, lastUserMessage.content, 3);
-                        
+                        const relevantChunks = await queryDocument(
+                            docInfo.id,
+                            lastUserMessage.content,
+                            3
+                        );
+
                         if (relevantChunks.length > 0) {
                             // Create context from relevant chunks
                             const contextFromDoc = relevantChunks
-                                .map(chunk => `--- From document "${docInfo.fileName}" ---\n${chunk.pageContent}\n`)
+                                .map(
+                                    (chunk) =>
+                                        `--- From document "${docInfo.fileName}" ---\n${chunk.pageContent}\n`
+                                )
                                 .join("\n");
-                            
+
                             documentContext += contextFromDoc + "\n\n";
                         }
                     } catch (queryError) {
-                        console.error(`Error querying document ${docInfo.id}:`, queryError);
+                        console.error(
+                            `Error querying document ${docInfo.id}:`,
+                            queryError
+                        );
                     }
                 }
             }
-            
+
             // Create messages array for API
             let apiMessages = [];
-            
+
             // Add system message
             apiMessages.push({
                 role: "system",
                 content: DEFAULT_SYSTEM_MESSAGE,
             });
-            
+
             // If we have document context, add it to the system message
             if (documentContext) {
                 apiMessages.push({
@@ -1003,20 +1051,22 @@ export async function POST(req: Request) {
                     content: `The following information is extracted from the user's uploaded documents. Use this information to answer their questions:\n\n${documentContext}`,
                 });
             }
-            
+
             // Add conversation history
             apiMessages = apiMessages.concat(messages);
-            
+
             // Call the API
             const response = await openai.chat.completions.create({
                 model: "gpt-4o",
                 messages: apiMessages,
                 temperature: 0.7,
             });
-            
-            return new NextResponse(JSON.stringify({
-                content: response.choices[0].message.content,
-            }));
+
+            return new NextResponse(
+                JSON.stringify({
+                    content: response.choices[0].message.content,
+                })
+            );
         } catch (error) {
             console.error("Error in chat route:", error);
             return new NextResponse(
@@ -1465,7 +1515,10 @@ async function processFiles(files: FileData[]): Promise<{
                         metadata = await simplePdfMetadata(pdfBuffer);
                         console.log("Extracted PDF metadata:", metadata);
                     } catch (metadataError) {
-                        console.error("Failed to extract PDF metadata:", metadataError);
+                        console.error(
+                            "Failed to extract PDF metadata:",
+                            metadataError
+                        );
                     }
 
                     // Extract text using our improved extractor
@@ -1484,24 +1537,29 @@ async function processFiles(files: FileData[]): Promise<{
 
                         // Extract text using our improved method
                         const pdfText = await extractPdfText(pdfBuffer);
-                        
+
                         // Also extract document structure for better understanding
-                        const pdfStructure = await extractPdfStructure(pdfBuffer);
-                        
+                        const pdfStructure = await extractPdfStructure(
+                            pdfBuffer
+                        );
+
                         // Check if we actually got text content
                         if (pdfText && pdfText.trim().length > 0) {
                             fileContents += `--- PDF Document: ${file.name} (${(
                                 file.size / 1024
                             ).toFixed(1)} KB) ---\n`;
-                            
+
                             // Add the content with better formatting
                             fileContents += pdfText + "\n\n";
-                            
+
                             // Add structure information
-                            if (pdfStructure && pdfStructure.trim().length > 0) {
+                            if (
+                                pdfStructure &&
+                                pdfStructure.trim().length > 0
+                            ) {
                                 fileContents += pdfStructure + "\n\n";
                             }
-                            
+
                             pdfStats.successCount++;
                             pdfStats.methodsUsed.push("pdfjs-extraction");
                             console.log(
@@ -1525,29 +1583,40 @@ async function processFiles(files: FileData[]): Promise<{
                             }`
                         );
                         pdfStats.failureCount++;
-                            
+
                         // If text extraction failed, provide a simple fallback
                         fileContents += `--- PDF Document: ${file.name} (${(
                             file.size / 1024
                         ).toFixed(1)} KB) ---\n`;
-                        
+
                         // Still add metadata if available
-                        if (metadata && typeof metadata === 'object') {
+                        if (metadata && typeof metadata === "object") {
                             fileContents += "--- Document Information ---\n";
-                            for (const [key, value] of Object.entries(metadata)) {
+                            for (const [key, value] of Object.entries(
+                                metadata
+                            )) {
                                 fileContents += `${key}: ${value}\n`;
                             }
                             fileContents += "\n";
                         }
-                        
+
                         fileContents += `[The system attempted to extract text from this PDF but encountered technical issues. `;
                         fileContents += `The PDF will be analyzed visually instead.]\n\n`;
                     }
                 } catch (error) {
-                    console.error(`General error processing PDF ${file.name}:`, error);
+                    console.error(
+                        `General error processing PDF ${file.name}:`,
+                        error
+                    );
                     pdfStats.failureCount++;
-                    pdfStats.errors.push(`General PDF processing error: ${error instanceof Error ? error.message : "Unknown error"}`);
-                    
+                    pdfStats.errors.push(
+                        `General PDF processing error: ${
+                            error instanceof Error
+                                ? error.message
+                                : "Unknown error"
+                        }`
+                    );
+
                     fileContents += `--- PDF Document: ${file.name} (${(
                         file.size / 1024
                     ).toFixed(1)} KB) ---\n`;
@@ -1832,24 +1901,27 @@ const getLanguageFromExtension = (extension: string): string => {
 };
 
 // Helper function to extract PDF metadata
-async function extractPdfMetadata(pdfBuffer: Buffer): Promise<Record<string, any>> {
+async function extractPdfMetadata(
+    pdfBuffer: Buffer
+): Promise<Record<string, any>> {
     try {
         const pdfDoc = await PDFDocument.load(pdfBuffer);
-        
+
         const metadata = {
             pageCount: pdfDoc.getPageCount(),
-            title: pdfDoc.getTitle() || 'Unknown',
-            author: pdfDoc.getAuthor() || 'Unknown',
-            subject: pdfDoc.getSubject() || '',
-            keywords: pdfDoc.getKeywords() || '',
-            creationDate: pdfDoc.getCreationDate()?.toISOString() || 'Unknown',
-            modificationDate: pdfDoc.getModificationDate()?.toISOString() || 'Unknown'
+            title: pdfDoc.getTitle() || "Unknown",
+            author: pdfDoc.getAuthor() || "Unknown",
+            subject: pdfDoc.getSubject() || "",
+            keywords: pdfDoc.getKeywords() || "",
+            creationDate: pdfDoc.getCreationDate()?.toISOString() || "Unknown",
+            modificationDate:
+                pdfDoc.getModificationDate()?.toISOString() || "Unknown",
         };
-        
+
         return metadata;
     } catch (error) {
-        console.error('Error extracting PDF metadata:', error);
-        return { error: 'Failed to extract metadata' };
+        console.error("Error extracting PDF metadata:", error);
+        return { error: "Failed to extract metadata" };
     }
 }
 

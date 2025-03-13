@@ -33,7 +33,8 @@ export const ensureVectorStoreDir = async () => {
 // Initialize the vector store for a document
 export const initializeVectorStore = async (
     documentId: string,
-    documents: Document[]
+    documents: Document[],
+    persistToDisk: boolean = false
 ) => {
     try {
         const embeddings = new OpenAIEmbeddings();
@@ -46,8 +47,10 @@ export const initializeVectorStore = async (
         vectorStores[documentId] = vectorStore;
         documentsById[documentId] = documents;
 
-        // Persist to disk (optional)
-        await persistVectorStore(documentId);
+        // Persist to disk only if requested
+        if (persistToDisk) {
+            await persistVectorStore(documentId);
+        }
 
         return vectorStore;
     } catch (error) {
@@ -138,6 +141,7 @@ export const searchDocuments = async (
         // Make sure vector store is loaded
         let vectorStore = vectorStores[documentId];
         if (!vectorStore) {
+            // Only try loading from disk if we don't have it in memory
             const loadedStore = await loadVectorStore(documentId);
             if (!loadedStore) {
                 throw new Error(
@@ -148,7 +152,10 @@ export const searchDocuments = async (
         }
 
         // Search for similar documents
-        const results = await vectorStore.similaritySearch(query, topK) as Document[];
+        const results = (await vectorStore.similaritySearch(
+            query,
+            topK
+        )) as Document[];
         return results;
     } catch (error) {
         console.error(`Error searching in document ${documentId}:`, error);
