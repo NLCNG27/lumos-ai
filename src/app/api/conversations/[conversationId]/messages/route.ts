@@ -5,14 +5,11 @@ import {
     saveMessageToConversation,
 } from "@/app/lib/conversation-service";
 
-interface RouteParams {
-    params: {
-        conversationId: string;
-    };
-}
-
 // Get all messages for a conversation
-export async function GET(req: NextRequest, { params }: RouteParams) {
+export async function GET(
+    req: NextRequest,
+    { params }: { params: { conversationId: string } }
+) {
     const auth_obj = await auth();
     const userId = auth_obj.userId;
 
@@ -33,7 +30,10 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 }
 
 // Add a new message to a conversation
-export async function POST(req: NextRequest, { params }: RouteParams) {
+export async function POST(
+    req: NextRequest,
+    { params }: { params: { conversationId: string } }
+) {
     const auth_obj = await auth();
     const userId = auth_obj.userId;
 
