@@ -117,7 +117,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                     fill="currentColor"
                 >
                     <path d={iconPath} />
-                </svg>
+                </svg>  
             </div>
         );
     };
