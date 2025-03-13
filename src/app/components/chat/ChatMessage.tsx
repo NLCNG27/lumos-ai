@@ -214,19 +214,19 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                             p: (props) => (
                                 <p className="my-1" {...props} />
                             ),
-                            ul: (props) => (
+                            ul: ({ ordered, ...props }) => (
                                 <ul
                                     className="list-disc pl-5 my-2"
                                     {...props}
                                 />
                             ),
-                            ol: (props) => (
+                            ol: ({ ordered, ...props }) => (
                                 <ol
                                     className="list-decimal pl-5 my-2"
                                     {...props}
                                 />
                             ),
-                            li: (props) => (
+                            li: ({ ordered, ...props }) => (
                                 <li className="my-1" {...props} />
                             ),
                             a: (props) => (
@@ -235,7 +235,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                                     {...props}
                                 />
                             ),
-                            code: ({ className, children, ...props }: any) => {
+                            code: ({ className, children, inline, ...props }: CodeProps) => {
                                 const match = /language-(\w+)/.exec(className || '');
                                 return match ? (
                                     <SyntaxHighlighter
