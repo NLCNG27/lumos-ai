@@ -7,9 +7,10 @@ import {
 
 // Get all messages for a conversation
 export async function GET(
-    req: NextRequest,
-    { params }: { params: { conversationId: string } }
+    request: NextRequest,
+    params: Promise<{ conversationId: string }>
 ) {
+    const { conversationId } = await params;
     const auth_obj = await auth();
     const userId = auth_obj.userId;
 
@@ -18,7 +19,7 @@ export async function GET(
     }
 
     try {
-        const messages = await getConversationMessages(params.conversationId);
+        const messages = await getConversationMessages(conversationId);
         return NextResponse.json({ messages });
     } catch (error: any) {
         console.error("Error fetching messages:", error);
@@ -31,9 +32,10 @@ export async function GET(
 
 // Add a new message to a conversation
 export async function POST(
-    req: NextRequest,
-    { params }: { params: { conversationId: string } }
+    request: NextRequest,
+    params: Promise<{ conversationId: string }>
 ) {
+    const { conversationId } = await params;
     const auth_obj = await auth();
     const userId = auth_obj.userId;
 
@@ -42,7 +44,7 @@ export async function POST(
     }
 
     try {
-        const messageData = await req.json();
+        const messageData = await request.json();
 
         // Validate required fields
         if (!messageData.content || !messageData.role) {
@@ -53,7 +55,7 @@ export async function POST(
         }
 
         const message = await saveMessageToConversation(
-            params.conversationId,
+            conversationId,
             messageData
         );
 
