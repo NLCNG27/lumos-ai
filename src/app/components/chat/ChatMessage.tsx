@@ -125,11 +125,11 @@ export default function ChatMessage({ message }: ChatMessageProps) {
         <div
             className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}
         >
-            {!isUser && (
+            {/* {!isUser && (
                 <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
                     <span className="text-white text-xs">AI</span>
                 </div>
-            )}
+            )} */}
             <div
                 className={`max-w-[80%] px-4 py-2 rounded-2xl relative group ${
                     isUser
@@ -264,11 +264,11 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                     </ReactMarkdown>
                 </div>
             </div>
-            {isUser && (
+            {/* {isUser && (
                 <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center">
                     <span className="text-gray-700 text-xs">You</span>
                 </div>
-            )}
+            )} */}
         </div>
     );
 }
