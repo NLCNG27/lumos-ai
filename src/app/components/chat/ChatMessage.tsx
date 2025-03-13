@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
+import type { Components } from 'react-markdown';
 
 type ChatMessageProps = {
     message: Message;
@@ -175,66 +176,17 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                 <div className="text-sm markdown-content">
                     <ReactMarkdown
                         components={{
-                            h1: (props) => (
-                                <h1
-                                    className="text-xl font-bold my-2"
-                                    {...props}
-                                />
-                            ),
-                            h2: (props) => (
-                                <h2
-                                    className="text-lg font-bold my-2"
-                                    {...props}
-                                />
-                            ),
-                            h3: (props) => (
-                                <h3
-                                    className="text-md font-bold my-1"
-                                    {...props}
-                                />
-                            ),
-                            h4: (props) => (
-                                <h4
-                                    className="text-base font-bold my-1"
-                                    {...props}
-                                />
-                            ),
-                            h5: (props) => (
-                                <h5
-                                    className="text-sm font-bold my-1"
-                                    {...props}
-                                />
-                            ),
-                            h6: (props) => (
-                                <h6
-                                    className="text-xs font-bold my-1"
-                                    {...props}
-                                />
-                            ),
-                            p: (props) => (
-                                <p className="my-1" {...props} />
-                            ),
-                            ul: ({ ordered, ...props }) => (
-                                <ul
-                                    className="list-disc pl-5 my-2"
-                                    {...props}
-                                />
-                            ),
-                            ol: ({ ordered, ...props }) => (
-                                <ol
-                                    className="list-decimal pl-5 my-2"
-                                    {...props}
-                                />
-                            ),
-                            li: ({ ordered, ...props }) => (
-                                <li className="my-1" {...props} />
-                            ),
-                            a: (props) => (
-                                <a
-                                    className="text-blue-400 underline"
-                                    {...props}
-                                />
-                            ),
+                            h1: ({...props}: any) => <h1 className="text-xl font-bold my-2" {...props} />,
+                            h2: ({...props}: any) => <h2 className="text-lg font-bold my-2" {...props} />,
+                            h3: ({...props}: any) => <h3 className="text-md font-bold my-1" {...props} />,
+                            h4: ({...props}: any) => <h4 className="text-base font-bold my-1" {...props} />,
+                            h5: ({...props}: any) => <h5 className="text-sm font-bold my-1" {...props} />,
+                            h6: ({...props}: any) => <h6 className="text-xs font-bold my-1" {...props} />,
+                            p: ({...props}: any) => <p className="my-1" {...props} />,
+                            ul: ({ordered, ...props}: any) => <ul className="list-disc pl-5 my-2" {...props} />,
+                            ol: ({ordered, ...props}: any) => <ol className="list-decimal pl-5 my-2" {...props} />,
+                            li: ({ordered, ...props}: any) => <li className="my-1" {...props} />,
+                            a: ({...props}: any) => <a className="text-blue-400 underline" {...props} />,
                             code: ({ className, children, inline, ...props }: CodeProps) => {
                                 const match = /language-(\w+)/.exec(className || '');
                                 return match ? (
@@ -257,8 +209,8 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                                     </code>
                                 );
                             },
-                            pre: ({ children }: any) => <div className="overflow-hidden rounded-md my-2">{children}</div>,
-                        }}
+                            pre: ({children}: any) => <div className="overflow-hidden rounded-md my-2">{children}</div>,
+                        } as Components}
                     >
                         {message.content}
                     </ReactMarkdown>
