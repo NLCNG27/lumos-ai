@@ -36,7 +36,7 @@ export const processDocument = (
 
     if (fileName.toLowerCase().endsWith(".pdf")) {
         // For PDFs, keep metadata in the first chunk
-        const metadataMatch = fileContent.match(/^(PDF Document.*?Content:)/s);
+        const metadataMatch = fileContent.match(/^(PDF Document.*?Content:)/);
 
         if (metadataMatch && metadataMatch[0]) {
             const metadata = metadataMatch[0];
