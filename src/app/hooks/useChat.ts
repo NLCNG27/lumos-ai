@@ -1,14 +1,86 @@
-import { useState, useCallback } from "react";
-import { Message, UploadedFile, ProcessedFile } from "@/app/types";
+import { useState, useCallback, useEffect } from "react";
+import { Message, UploadedFile, ProcessedFile, Conversation } from "@/app/types";
 
 export function useChat() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
+
+    // Create a new conversation when the component mounts
+    useEffect(() => {
+        const createNewConversation = async () => {
+            try {
+                const response = await fetch("/api/conversations", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ title: "New Conversation" }),
+                });
+
+                if (!response.ok) {
+                    throw new Error("Failed to create conversation");
+                }
+
+                const data = await response.json();
+                setCurrentConversation(data.conversation);
+            } catch (err) {
+                console.error("Error creating conversation:", err);
+                setError(
+                    err instanceof Error
+                        ? err.message
+                        : "Failed to create conversation"
+                );
+            }
+        };
+
+        createNewConversation();
+    }, []);
+
+    // Save message to the conversation in Supabase
+    const saveMessageToConversation = async (message: Message) => {
+        if (!currentConversation) return;
+
+        try {
+            await fetch(`/api/conversations/${currentConversation.id}/messages`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    content: message.content,
+                    role: message.role,
+                    files: message.files
+                }),
+            });
+        } catch (err) {
+            console.error("Error saving message to conversation:", err);
+        }
+    };
+
+    // Update conversation title based on first user message
+    const updateConversationTitle = async (content: string) => {
+        if (!currentConversation || messages.length > 0) return;
+
+        // Only update title for the first message
+        try {
+            // Generate a title from the first few words of the message
+            const title = content.split(' ').slice(0, 5).join(' ') + (content.length > 30 ? '...' : '');
+            
+            await fetch(`/api/conversations/${currentConversation.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title }),
+            });
+        } catch (err) {
+            console.error("Error updating conversation title:", err);
+        }
+    };
 
     const sendMessage = useCallback(
         async (content: string, files?: UploadedFile[]) => {
             if (!content.trim() && (!files || files.length === 0)) return;
+            if (!currentConversation) {
+                setError("No active conversation. Please refresh the page.");
+                return;
+            }
 
             // Transform uploadedFiles to match our type
             const processedFiles: ProcessedFile[] =
@@ -34,6 +106,12 @@ export function useChat() {
             setError(null);
 
             try {
+                // Update conversation title based on first message
+                await updateConversationTitle(content);
+
+                // Save user message to conversation
+                await saveMessageToConversation(userMessage);
+
                 // Prepare messages for API
                 const apiMessages = messages
                     .concat(userMessage)
@@ -70,16 +148,19 @@ export function useChat() {
 
                 const aiMessage = await response.json();
 
+                // Create AI message object
+                const assistantMessage: Message = {
+                    id: Date.now().toString(),
+                    content: aiMessage.content,
+                    role: "assistant",
+                    timestamp: new Date(),
+                };
+
                 // Add AI response to messages
-                setMessages((prev) => [
-                    ...prev,
-                    {
-                        id: Date.now().toString(),
-                        content: aiMessage.content,
-                        role: "assistant",
-                        timestamp: new Date(),
-                    },
-                ]);
+                setMessages((prev) => [...prev, assistantMessage]);
+
+                // Save AI message to conversation
+                await saveMessageToConversation(assistantMessage);
             } catch (err) {
                 setError(
                     err instanceof Error
@@ -90,7 +171,7 @@ export function useChat() {
                 setIsLoading(false);
             }
         },
-        [messages]
+        [messages, currentConversation]
     );
 
     // Helper function to convert a file to base64
@@ -108,5 +189,6 @@ export function useChat() {
         isLoading,
         error,
         sendMessage,
+        currentConversation
     };
 }

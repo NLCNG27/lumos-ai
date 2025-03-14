@@ -2,9 +2,10 @@ import { useEffect, useRef } from "react";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import { useChat } from "@/app/hooks/useChat";
+import Link from "next/link";
 
 export default function ChatWindow() {
-    const { messages, isLoading, error, sendMessage } = useChat();
+    const { messages, isLoading, error, sendMessage, currentConversation } = useChat();
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Scroll to bottom when messages change
@@ -14,8 +15,16 @@ export default function ChatWindow() {
 
     return (
         <div className="flex flex-col h-[80vh] bg-black dark:bg-black rounded-lg shadow-lg">
-            <div className="p-4 border-b">
-                <h2 className="text-lg font-semibold">Lumos AI Assistant</h2>
+            <div className="p-4 border-b border-gray-800 flex justify-between items-center">
+                <h2 className="text-lg font-semibold text-white">
+                    {currentConversation ? currentConversation.title : "Lumos AI Assistant"}
+                </h2>
+                <Link 
+                    href="/test-conversations" 
+                    className="text-blue-400 hover:text-blue-300 text-sm"
+                >
+                    View All Conversations
+                </Link>
             </div>
 
             <div className="flex-grow p-4 overflow-y-auto space-y-4">
@@ -33,7 +42,7 @@ export default function ChatWindow() {
                 )}
 
                 {error && (
-                    <div className="p-2 bg-red-100 text-red-700 rounded-lg text-sm">
+                    <div className="p-2 bg-red-900 text-red-100 rounded-lg text-sm">
                         Error: {error}
                     </div>
                 )}
