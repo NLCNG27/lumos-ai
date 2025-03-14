@@ -123,7 +123,7 @@ function generateTitleFromMessage(content: string): string {
 }
 
 // Get user's conversations
-export async function getUserConversations() {
+export async function getUserConversations(includeArchived: boolean = false) {
     const auth_obj = await auth();
     const userId = auth_obj.userId;
 
@@ -145,12 +145,21 @@ export async function getUserConversations() {
         throw new Error("User not found in database");
     }
 
-    // Now get conversations using our internal ID
-    const { data, error } = await supabase
+    // Build the query
+    let query = supabase
         .from("conversations")
         .select("*")
-        .eq("user_id", user.id)
-        .order("last_message_at", { ascending: false });
+        .eq("user_id", user.id);
+
+    // Filter out archived conversations unless specifically requested
+    if (!includeArchived) {
+        query = query.eq("is_archived", false);
+    }
+
+    // Order by last message timestamp
+    const { data, error } = await query.order("last_message_at", {
+        ascending: false,
+    });
 
     if (error) {
         console.error("Error fetching conversations:", error);
@@ -158,6 +167,170 @@ export async function getUserConversations() {
     }
 
     return data;
+}
+
+// Get a single conversation by ID
+export async function getConversationById(conversationId: string) {
+    const auth_obj = await auth();
+    const clerkUserId = auth_obj.userId;
+
+    if (!clerkUserId) {
+        throw new Error("User not authenticated");
+    }
+
+    const supabase = createServerSupabaseClient();
+
+    // First, find the user by clerk_id to get our internal UUID
+    const { data: user, error: userError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("clerk_id", clerkUserId)
+        .single();
+
+    if (userError) {
+        console.error("Error finding user:", userError);
+        throw new Error("User not found in database");
+    }
+
+    // Get the conversation and verify ownership
+    const { data, error } = await supabase
+        .from("conversations")
+        .select("*")
+        .eq("id", conversationId)
+        .eq("user_id", user.id)
+        .single();
+
+    if (error || !data) {
+        console.error("Error fetching conversation:", error);
+        throw new Error("Conversation not found");
+    }
+
+    return data;
+}
+
+// Update a conversation
+export async function updateConversation(
+    conversationId: string,
+    updates: { title?: string; is_archived?: boolean }
+) {
+    const auth_obj = await auth();
+    const clerkUserId = auth_obj.userId;
+
+    if (!clerkUserId) {
+        throw new Error("User not authenticated");
+    }
+
+    const supabase = createServerSupabaseClient();
+
+    // First, find the user by clerk_id to get our internal UUID
+    const { data: user, error: userError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("clerk_id", clerkUserId)
+        .single();
+
+    if (userError) {
+        console.error("Error finding user:", userError);
+        throw new Error("User not found in database");
+    }
+
+    // Verify ownership of the conversation
+    const { data: conversation, error: convError } = await supabase
+        .from("conversations")
+        .select("user_id")
+        .eq("id", conversationId)
+        .single();
+
+    if (convError || !conversation) {
+        throw new Error("Conversation not found");
+    }
+
+    if (conversation.user_id !== user.id) {
+        throw new Error("Unauthorized access to conversation");
+    }
+
+    // Add updated_at timestamp
+    const updateData = {
+        ...updates,
+        updated_at: new Date().toISOString(),
+    };
+
+    // Update the conversation
+    const { data, error } = await supabase
+        .from("conversations")
+        .update(updateData)
+        .eq("id", conversationId)
+        .select()
+        .single();
+
+    if (error) {
+        console.error("Error updating conversation:", error);
+        throw new Error("Failed to update conversation");
+    }
+
+    return data;
+}
+
+// Archive a conversation
+export async function archiveConversation(conversationId: string) {
+    return updateConversation(conversationId, { is_archived: true });
+}
+
+// Unarchive a conversation
+export async function unarchiveConversation(conversationId: string) {
+    return updateConversation(conversationId, { is_archived: false });
+}
+
+// Delete a conversation permanently
+export async function deleteConversation(conversationId: string) {
+    const auth_obj = await auth();
+    const clerkUserId = auth_obj.userId;
+
+    if (!clerkUserId) {
+        throw new Error("User not authenticated");
+    }
+
+    const supabase = createServerSupabaseClient();
+
+    // First, find the user by clerk_id to get our internal UUID
+    const { data: user, error: userError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("clerk_id", clerkUserId)
+        .single();
+
+    if (userError) {
+        console.error("Error finding user:", userError);
+        throw new Error("User not found in database");
+    }
+
+    // Verify ownership of the conversation
+    const { data: conversation, error: convError } = await supabase
+        .from("conversations")
+        .select("user_id")
+        .eq("id", conversationId)
+        .single();
+
+    if (convError || !conversation) {
+        throw new Error("Conversation not found");
+    }
+
+    if (conversation.user_id !== user.id) {
+        throw new Error("Unauthorized access to conversation");
+    }
+
+    // Delete the conversation
+    const { error } = await supabase
+        .from("conversations")
+        .delete()
+        .eq("id", conversationId);
+
+    if (error) {
+        console.error("Error deleting conversation:", error);
+        throw new Error("Failed to delete conversation");
+    }
+
+    return true;
 }
 
 // Get messages for a conversation

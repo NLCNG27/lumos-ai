@@ -28,3 +28,14 @@ export type ProcessedFile = {
     previewUrl?: string;
     content?: string; // For text content after processing
 };
+
+// Conversation type
+export type Conversation = {
+    id: string;
+    user_id: string;
+    title: string | null;
+    created_at: string;
+    updated_at: string;
+    is_archived: boolean;
+    last_message_at: string;
+};
