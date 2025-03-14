@@ -22,7 +22,7 @@ function DeleteConfirmationModal({
   if (!isOpen) return null;
   
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-25 z-50 flex items-center justify-center p-4">
       <div className="bg-gray-900 rounded-lg shadow-xl max-w-md w-full border border-gray-700 overflow-hidden">
         <div className="p-6">
           <div className="flex items-center text-red-500 mb-4">

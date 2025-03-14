@@ -233,7 +233,81 @@ export async function DELETE(
                 conversation: data
             });
         } else {
-            // Permanently delete the conversation
+            // Permanently delete the conversation and all associated data
+            // First, find all messages in this conversation
+            const { data: messages, error: messagesError } = await supabase
+                .from("messages")
+                .select("id")
+                .eq("conversation_id", conversationId);
+
+            if (messagesError) {
+                console.error("Error finding messages:", messagesError);
+                return NextResponse.json(
+                    { error: "Failed to find messages for conversation" },
+                    { status: 500 }
+                );
+            }
+
+            // If there are messages, find and delete associated files
+            if (messages && messages.length > 0) {
+                const messageIds = messages.map(message => message.id);
+                
+                // Find all files associated with these messages
+                const { data: files, error: filesError } = await supabase
+                    .from("files")
+                    .select("id, storage_path")
+                    .in("message_id", messageIds);
+
+                if (filesError) {
+                    console.error("Error finding files:", filesError);
+                    // Continue with deletion even if we can't find files
+                }
+
+                // Delete files from storage
+                if (files && files.length > 0) {
+                    // Delete files from storage bucket
+                    for (const file of files) {
+                        if (file.storage_path) {
+                            const { error: storageError } = await supabase
+                                .storage
+                                .from('files')
+                                .remove([file.storage_path]);
+                            
+                            if (storageError) {
+                                console.error(`Error deleting file from storage: ${file.storage_path}`, storageError);
+                                // Continue with other deletions
+                            }
+                        }
+                    }
+
+                    // Delete file records from database
+                    const { error: deleteFilesError } = await supabase
+                        .from("files")
+                        .delete()
+                        .in("message_id", messageIds);
+
+                    if (deleteFilesError) {
+                        console.error("Error deleting file records:", deleteFilesError);
+                        // Continue with deletion even if file record deletion fails
+                    }
+                }
+
+                // Delete all messages in the conversation
+                const { error: deleteMessagesError } = await supabase
+                    .from("messages")
+                    .delete()
+                    .eq("conversation_id", conversationId);
+
+                if (deleteMessagesError) {
+                    console.error("Error deleting messages:", deleteMessagesError);
+                    return NextResponse.json(
+                        { error: "Failed to delete messages" },
+                        { status: 500 }
+                    );
+                }
+            }
+
+            // Finally delete the conversation
             const { error } = await supabase
                 .from("conversations")
                 .delete()

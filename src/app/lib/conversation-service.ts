@@ -381,6 +381,73 @@ export async function deleteConversation(conversationId: string) {
         throw new Error("Unauthorized access to conversation");
     }
 
+    // Find all messages in this conversation
+    const { data: messages, error: messagesError } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("conversation_id", conversationId);
+
+    if (messagesError) {
+        console.error("Error finding messages:", messagesError);
+        throw new Error("Failed to find messages for conversation");
+    }
+
+    // If there are messages, find and delete associated files
+    if (messages && messages.length > 0) {
+        const messageIds = messages.map(message => message.id);
+        
+        // Find all files associated with these messages
+        const { data: files, error: filesError } = await supabase
+            .from("files")
+            .select("id, storage_path")
+            .in("message_id", messageIds);
+
+        if (filesError) {
+            console.error("Error finding files:", filesError);
+            // Continue with deletion even if we can't find files
+        }
+
+        // Delete files from storage
+        if (files && files.length > 0) {
+            // Delete files from storage bucket
+            for (const file of files) {
+                if (file.storage_path) {
+                    const { error: storageError } = await supabase
+                        .storage
+                        .from('files')
+                        .remove([file.storage_path]);
+                    
+                    if (storageError) {
+                        console.error(`Error deleting file from storage: ${file.storage_path}`, storageError);
+                        // Continue with other deletions
+                    }
+                }
+            }
+
+            // Delete file records from database
+            const { error: deleteFilesError } = await supabase
+                .from("files")
+                .delete()
+                .in("message_id", messageIds);
+
+            if (deleteFilesError) {
+                console.error("Error deleting file records:", deleteFilesError);
+                // Continue with deletion even if file record deletion fails
+            }
+        }
+
+        // Delete all messages in the conversation
+        const { error: deleteMessagesError } = await supabase
+            .from("messages")
+            .delete()
+            .eq("conversation_id", conversationId);
+
+        if (deleteMessagesError) {
+            console.error("Error deleting messages:", deleteMessagesError);
+            throw new Error("Failed to delete messages");
+        }
+    }
+
     // Delete the conversation
     const { error } = await supabase
         .from("conversations")
@@ -486,6 +553,13 @@ export async function getConversationMessages(conversationId: string) {
         content: message.content,
         role: message.role,
         timestamp: new Date(message.created_at),
-        files: message.files as ProcessedFile[],
+        files: message.files ? message.files.map((file: any) => ({
+            id: file.id,
+            name: file.file_name,
+            type: file.file_type,
+            size: file.file_size,
+            previewUrl: file.preview_url,
+            storage_path: file.storage_path
+        })) : [],
     }));
 }
