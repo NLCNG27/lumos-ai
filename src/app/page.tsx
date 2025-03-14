@@ -3,7 +3,7 @@
 import ChatWindow from "@/app/components/chat/ChatWindow";
 import ConversationSidebar from "@/app/components/chat/ConversationSidebar";
 import Image from "next/image";
-import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
+import { SignedIn, SignedOut, UserButton, SignInButton, SignUpButton } from "@clerk/nextjs";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -97,7 +97,21 @@ export default function Home() {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <UserButton afterSignOutUrl="/" />
+                        <SignedOut>
+                            <SignInButton mode="modal">
+                                <button className="px-4 py-2 text-sm font-medium text-black dark:text-white bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 dark:focus:ring-offset-black border border-gray-300 dark:border-gray-600">
+                                    Sign in
+                                </button>
+                            </SignInButton>
+                            <SignUpButton mode="modal">
+                                <button className="px-4 py-2 text-sm font-medium text-white dark:text-black bg-black dark:bg-white hover:bg-gray-900 dark:hover:bg-gray-100 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 dark:focus:ring-offset-black border border-gray-700 dark:border-gray-300">
+                                    Sign up
+                                </button>
+                            </SignUpButton>
+                        </SignedOut>
+                        <SignedIn>
+                            <UserButton afterSignOutUrl="/" />
+                        </SignedIn>
                         <button 
                             onClick={() => setSidebarOpen(!sidebarOpen)}
                             className="md:hidden text-white p-2"
