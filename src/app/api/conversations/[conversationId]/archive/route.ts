@@ -5,8 +5,9 @@ import { archiveConversation } from "@/app/lib/conversation-service";
 // Archive a conversation
 export async function POST(
     req: NextRequest,
-    { params }: { params: { conversationId: string } }
+    { params }: { params: Promise<{ conversationId: string }> }
 ) {
+    const conversationId = (await params).conversationId;
     const auth_obj = await auth();
     const userId = auth_obj.userId;
 
@@ -15,10 +16,10 @@ export async function POST(
     }
 
     try {
-        const conversation = await archiveConversation(params.conversationId);
-        return NextResponse.json({ 
+        const conversation = await archiveConversation(conversationId);
+        return NextResponse.json({
             message: "Conversation archived successfully",
-            conversation 
+            conversation,
         });
     } catch (error: any) {
         console.error("Error archiving conversation:", error);
@@ -27,4 +28,4 @@ export async function POST(
             { status: 500 }
         );
     }
-} 
+}

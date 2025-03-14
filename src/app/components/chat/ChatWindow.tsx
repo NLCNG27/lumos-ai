@@ -4,8 +4,14 @@ import ChatInput from "./ChatInput";
 import { useChat } from "@/app/hooks/useChat";
 import Link from "next/link";
 
-export default function ChatWindow() {
-    const { messages, isLoading, error, sendMessage, currentConversation } = useChat();
+interface ChatWindowProps {
+  initialConversationId?: string;
+}
+
+export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
+    const { messages, isLoading, error, sendMessage, currentConversation } = useChat({
+        initialConversationId
+    });
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Scroll to bottom when messages change
@@ -23,7 +29,7 @@ export default function ChatWindow() {
                     href="/test-conversations" 
                     className="text-blue-400 hover:text-blue-300 text-sm"
                 >
-                    View All Conversations
+                    Manage Conversations
                 </Link>
             </div>
 

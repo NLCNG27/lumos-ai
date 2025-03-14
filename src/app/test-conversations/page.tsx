@@ -179,11 +179,15 @@ export default function TestConversations() {
 
     return (
         <div className="container mx-auto p-4">
-            <h1 className="text-2xl font-bold mb-4 text-white">Test Conversations API</h1>
+            <h1 className="text-2xl font-bold mb-4 text-white">
+                Test Conversations API
+            </h1>
 
             {/* Status messages */}
             {loading && (
-                <div className="bg-blue-900 text-blue-100 p-2 mb-4 rounded">Loading...</div>
+                <div className="bg-blue-900 text-blue-100 p-2 mb-4 rounded">
+                    Loading...
+                </div>
             )}
             {error && (
                 <div className="bg-red-900 text-red-100 p-2 mb-4 rounded">
@@ -221,7 +225,9 @@ export default function TestConversations() {
 
             {/* Fetch conversations */}
             <div className="mb-6 p-4 border rounded border-gray-700 bg-gray-800">
-                <h2 className="text-xl font-semibold mb-2 text-white">Conversations</h2>
+                <h2 className="text-xl font-semibold mb-2 text-white">
+                    Conversations
+                </h2>
                 <div className="flex gap-2 mb-4">
                     <button
                         onClick={() => fetchConversations(false)}
@@ -332,7 +338,8 @@ export default function TestConversations() {
                     </h2>
                     <div className="mb-4 text-gray-300">
                         <p>
-                            <strong className="text-white">ID:</strong> {selectedConversation.id}
+                            <strong className="text-white">ID:</strong>{" "}
+                            {selectedConversation.id}
                         </p>
                         <p>
                             <strong className="text-white">Title:</strong>{" "}
@@ -351,7 +358,9 @@ export default function TestConversations() {
                             ).toLocaleString()}
                         </p>
                         <p>
-                            <strong className="text-white">Last Message:</strong>{" "}
+                            <strong className="text-white">
+                                Last Message:
+                            </strong>{" "}
                             {new Date(
                                 selectedConversation.last_message_at
                             ).toLocaleString()}
@@ -364,7 +373,9 @@ export default function TestConversations() {
 
                     {/* Update title */}
                     <div className="mt-4">
-                        <h3 className="font-medium mb-2 text-white">Update Title</h3>
+                        <h3 className="font-medium mb-2 text-white">
+                            Update Title
+                        </h3>
                         <div className="flex gap-2">
                             <input
                                 type="text"

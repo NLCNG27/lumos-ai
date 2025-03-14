@@ -5,8 +5,9 @@ import { createServerSupabaseClient } from "@/app/lib/supabase";
 // Get a single conversation by ID
 export async function GET(
     req: NextRequest,
-    { params }: { params: { conversationId: string } }
+    { params }: { params: Promise<{ conversationId: string }> }
 ) {
+    const conversationId = (await params).conversationId;
     const auth_obj = await auth();
     const userId = auth_obj.userId;
 
@@ -36,7 +37,7 @@ export async function GET(
         const { data, error } = await supabase
             .from("conversations")
             .select("*")
-            .eq("id", params.conversationId)
+            .eq("id", conversationId)
             .eq("user_id", user.id)
             .single();
 
@@ -61,8 +62,9 @@ export async function GET(
 // Update a conversation (title or archive status)
 export async function PATCH(
     req: NextRequest,
-    { params }: { params: { conversationId: string } }
+    { params }: { params: Promise<{ conversationId: string }> }
 ) {
+    const conversationId = (await params).conversationId;
     const auth_obj = await auth();
     const userId = auth_obj.userId;
 
@@ -92,7 +94,7 @@ export async function PATCH(
         const { data: conversation, error: convError } = await supabase
             .from("conversations")
             .select("user_id")
-            .eq("id", params.conversationId)
+            .eq("id", conversationId)
             .single();
 
         if (convError || !conversation) {
@@ -128,7 +130,7 @@ export async function PATCH(
         const { data, error } = await supabase
             .from("conversations")
             .update(filteredUpdate)
-            .eq("id", params.conversationId)
+            .eq("id", conversationId)
             .select()
             .single();
 
@@ -153,8 +155,9 @@ export async function PATCH(
 // Delete a conversation (or archive it if specified)
 export async function DELETE(
     req: NextRequest,
-    { params }: { params: { conversationId: string } }
+    { params }: { params: Promise<{ conversationId: string }> }
 ) {
+    const conversationId = (await params).conversationId;
     const auth_obj = await auth();
     const userId = auth_obj.userId;
 
@@ -184,7 +187,7 @@ export async function DELETE(
         const { data: conversation, error: convError } = await supabase
             .from("conversations")
             .select("user_id")
-            .eq("id", params.conversationId)
+            .eq("id", conversationId)
             .single();
 
         if (convError || !conversation) {
@@ -213,7 +216,7 @@ export async function DELETE(
                     is_archived: true,
                     updated_at: new Date().toISOString()
                 })
-                .eq("id", params.conversationId)
+                .eq("id", conversationId)
                 .select()
                 .single();
 
@@ -234,7 +237,7 @@ export async function DELETE(
             const { error } = await supabase
                 .from("conversations")
                 .delete()
-                .eq("id", params.conversationId);
+                .eq("id", conversationId);
 
             if (error) {
                 console.error("Error deleting conversation:", error);
