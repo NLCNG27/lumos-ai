@@ -20,7 +20,7 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
     }, [messages]);
 
     return (
-        <div className="flex flex-col h-[80vh] bg-black dark:bg-black rounded-lg shadow-lg">
+        <div className="flex flex-col h-full bg-black dark:bg-black rounded-lg shadow-lg">
             <div className="p-4 border-b border-gray-800 flex justify-between items-center">
                 <h2 className="text-lg font-semibold text-white">
                     {currentConversation ? currentConversation.title : "Lumos AI Assistant"}
@@ -28,7 +28,7 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
                 
             </div>
 
-            <div className="flex-grow p-4 overflow-y-auto space-y-4">
+            <div className="flex-1 p-4 overflow-y-auto space-y-4">
                 {messages.length === 0 ? (
                     <div className="text-center text-gray-500 mt-20">
                         <p>
@@ -58,7 +58,9 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
                 <div ref={messagesEndRef} /> 
             </div>
 
-            <ChatInput onSendMessage={sendMessage} isLoading={isLoading} />
+            <div className="bg-black">
+                <ChatInput onSendMessage={sendMessage} isLoading={isLoading} />
+            </div>
         </div>
     );
 }

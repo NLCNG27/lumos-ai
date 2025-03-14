@@ -139,7 +139,7 @@ export default function ChatInput({
         <form
             ref={formRef}
             onSubmit={handleSubmit}
-            className="flex flex-col border-t p-4"
+            className="flex flex-col p-4"
         >
             <FilePreview files={uploadedFiles} onRemove={handleRemoveFile} />
 

@@ -43,7 +43,7 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
                 </div>
 
                 {/* Main chat area */}
-                <div className="flex-1 p-4 overflow-hidden">
+                <div className="flex-1 flex flex-col h-full overflow-hidden">
                     <ChatWindow initialConversationId={conversationId || undefined} />
                 </div>
             </SignedIn>
@@ -106,7 +106,7 @@ export default function Home() {
                 </div>
             </header>
 
-            <main className="flex h-[calc(100vh-64px)]">
+            <main className="flex flex-1 h-[calc(100vh-128px)]">
                 <Suspense fallback={<ChatLoading />}>
                     <ChatContent sidebarOpen={sidebarOpen} />
                 </Suspense>
