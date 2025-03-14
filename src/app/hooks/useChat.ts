@@ -60,22 +60,37 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
         try {
             // Fetch conversation details
             const conversationResponse = await fetch(`/api/conversations/${conversationId}`);
+            
             if (!conversationResponse.ok) {
+                console.error(`Error loading conversation: ${conversationResponse.status}`);
+                
+                // If conversation not found, create a new one instead
+                if (conversationResponse.status === 404) {
+                    console.log("Conversation not found, creating a new one");
+                    await createNewConversation();
+                    return;
+                }
+                
                 throw new Error(`Error: ${conversationResponse.status}`);
             }
+            
             const conversationData = await conversationResponse.json();
             setCurrentConversation(conversationData.conversation);
 
             // Fetch conversation messages
             const messagesResponse = await fetch(`/api/conversations/${conversationId}/messages`);
             if (!messagesResponse.ok) {
-                throw new Error(`Error: ${messagesResponse.status}`);
+                console.error(`Error loading messages: ${messagesResponse.status}`);
+                // Continue even if messages can't be loaded
+                setMessages([]);
+            } else {
+                const messagesData = await messagesResponse.json();
+                setMessages(messagesData.messages || []);
             }
-            const messagesData = await messagesResponse.json();
-            setMessages(messagesData.messages || []);
         } catch (err) {
             console.error("Error loading conversation:", err);
-            throw err;
+            // If there's an error loading the conversation, create a new one
+            await createNewConversation();
         } finally {
             setIsLoading(false);
         }
@@ -111,13 +126,22 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
         if (!currentConversation) return;
 
         try {
+            // Ensure files are properly formatted before sending
+            const sanitizedFiles = message.files?.map(file => ({
+                id: file.id || '',
+                name: file.name || 'Unknown file',
+                type: file.type || 'application/octet-stream',
+                size: file.size || 0,
+                previewUrl: file.previewUrl || null
+            })) || undefined;
+
             await fetch(`/api/conversations/${currentConversation.id}/messages`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     content: message.content,
                     role: message.role,
-                    files: message.files
+                    files: sanitizedFiles
                 }),
             });
         } catch (err) {
@@ -157,15 +181,16 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
                 return;
             }
 
-            // Transform uploadedFiles to match our type
+            // Transform uploadedFiles to match our type, with validation
             const processedFiles: ProcessedFile[] =
-                files?.map((file) => ({
-                    id: file.id,
-                    name: file.file.name,
-                    type: file.file.type,
-                    size: file.file.size,
-                    previewUrl: file.previewUrl,
-                })) || [];
+                files?.filter(file => file && file.file)  // Filter out invalid files
+                    .map((file) => ({
+                        id: file.id || Date.now().toString(),
+                        name: file.file.name || 'Unknown file',
+                        type: file.file.type || 'application/octet-stream',
+                        size: file.file.size || 0,
+                        previewUrl: file.previewUrl,
+                    })) || [];
 
             // Create new user message
             const userMessage: Message = {
@@ -195,18 +220,24 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
                         role,
                     }));
 
-                // Convert files to base64 for sending to API
+                // Convert files to base64 for sending to API, with validation
                 const fileData = await Promise.all(
-                    files?.map(async (file) => {
-                        return {
-                            id: file.id,
-                            name: file.file.name,
-                            type: file.file.type,
-                            size: file.file.size,
-                            content: await fileToBase64(file.file),
-                        };
-                    }) || []
-                );
+                    files?.filter(file => file && file.file)  // Filter out invalid files
+                        .map(async (file) => {
+                            try {
+                                return {
+                                    id: file.id || Date.now().toString(),
+                                    name: file.file.name || 'Unknown file',
+                                    type: file.file.type || 'application/octet-stream',
+                                    size: file.file.size || 0,
+                                    content: await fileToBase64(file.file),
+                                };
+                            } catch (error) {
+                                console.error("Error processing file:", error);
+                                return null;
+                            }
+                        }) || []
+                ).then(results => results.filter(Boolean)); // Filter out nulls from failed conversions
 
                 const response = await fetch("/api/chat", {
                     method: "POST",
@@ -252,10 +283,25 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
     // Helper function to convert a file to base64
     const fileToBase64 = (file: File): Promise<string> => {
         return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = (error) => reject(error);
+            if (!file) {
+                reject(new Error("Invalid file"));
+                return;
+            }
+            
+            try {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => {
+                    if (typeof reader.result === 'string') {
+                        resolve(reader.result);
+                    } else {
+                        reject(new Error("Failed to convert file to base64"));
+                    }
+                };
+                reader.onerror = (error) => reject(error);
+            } catch (error) {
+                reject(error);
+            }
         });
     };
 

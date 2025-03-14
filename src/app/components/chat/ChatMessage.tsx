@@ -40,39 +40,45 @@ export default function ChatMessage({ message }: ChatMessageProps) {
 
         return (
             <div className="flex flex-wrap gap-2 mb-2">
-                {message.files.map((file) => (
-                    <div
-                        key={file.id}
-                        className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 flex flex-col"
-                    >
-                        <div className="flex items-center gap-2">
-                            {renderFilePreview(file)}
-                            <div className="flex-1 min-w-0">
-                                <p
-                                    className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate"
-                                    title={file.name}
-                                >
-                                    {file.name}
-                                </p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
-                                    {(file.size / 1024).toFixed(1)} KB
-                                </p>
+                {message.files.map((file) => {
+                    // Skip rendering if file is invalid
+                    if (!file || !file.id) return null;
+                    
+                    return (
+                        <div
+                            key={file.id}
+                            className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 flex flex-col"
+                        >
+                            <div className="flex items-center gap-2">
+                                {renderFilePreview(file)}
+                                <div className="flex-1 min-w-0">
+                                    <p
+                                        className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate"
+                                        title={file.name || "Unknown file"}
+                                    >
+                                        {file.name || "Unknown file"}
+                                    </p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        {file.size ? `${(file.size / 1024).toFixed(1)} KB` : "Unknown size"}
+                                    </p>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         );
     };
 
     // Render file preview based on file type
     const renderFilePreview = (file: ProcessedFile) => {
-        if (file.type.startsWith("image/") && file.previewUrl) {
+        // Add null checks to prevent errors when file properties are undefined
+        if (file && file.type && file.type.startsWith("image/") && file.previewUrl) {
             return (
                 <div className="relative w-16 h-16 overflow-hidden rounded bg-gray-100 dark:bg-gray-800">
                     <Image
                         src={file.previewUrl}
-                        alt={file.name}
+                        alt={file.name || "Image"}
                         fill
                         style={{ objectFit: "cover" }}
                     />
@@ -84,7 +90,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
         let iconPath;
         let bgColor = "bg-gray-100 dark:bg-gray-800";
         let textColor = "text-gray-600 dark:text-gray-300";
-        const fileExtension = file.name.split(".").pop()?.toLowerCase();
+        const fileExtension = file && file.name ? file.name.split(".").pop()?.toLowerCase() : "";
 
         if (["pdf"].includes(fileExtension || "")) {
             iconPath =

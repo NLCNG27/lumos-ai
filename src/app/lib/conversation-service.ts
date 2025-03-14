@@ -19,6 +19,21 @@ export async function createConversationForUser(
 
     if (userError) {
         console.error("Error finding user:", userError);
+        
+        // Try to sync the user first before failing
+        try {
+            // Import dynamically to avoid circular dependencies
+            const { syncUserWithSupabase } = await import("./user-sync");
+            const syncedUser = await syncUserWithSupabase();
+            
+            if (syncedUser) {
+                // If sync was successful, retry creating the conversation
+                return createConversationForUser(clerkUserId, title);
+            }
+        } catch (syncError) {
+            console.error("Error syncing user during conversation creation:", syncError);
+        }
+        
         throw new Error("User not found in database");
     }
 
@@ -123,7 +138,9 @@ function generateTitleFromMessage(content: string): string {
 }
 
 // Get user's conversations
-export async function getUserConversations(includeArchived: boolean = false) {
+export async function getUserConversations(
+    includeArchived: boolean = false
+) {
     const auth_obj = await auth();
     const userId = auth_obj.userId;
 
@@ -142,7 +159,23 @@ export async function getUserConversations(includeArchived: boolean = false) {
 
     if (userError) {
         console.error("Error finding user:", userError);
-        throw new Error("User not found in database");
+        
+        // Try to sync the user first before failing
+        try {
+            // Import dynamically to avoid circular dependencies
+            const { syncUserWithSupabase } = await import("./user-sync");
+            const syncedUser = await syncUserWithSupabase();
+            
+            if (syncedUser) {
+                // If sync was successful, retry getting conversations
+                return getUserConversations(includeArchived);
+            }
+        } catch (syncError) {
+            console.error("Error syncing user during conversation fetch:", syncError);
+        }
+        
+        // If we still can't find the user or sync failed, return empty array instead of throwing
+        return [];
     }
 
     // Build the query
@@ -189,6 +222,21 @@ export async function getConversationById(conversationId: string) {
 
     if (userError) {
         console.error("Error finding user:", userError);
+        
+        // Try to sync the user first before failing
+        try {
+            // Import dynamically to avoid circular dependencies
+            const { syncUserWithSupabase } = await import("./user-sync");
+            const syncedUser = await syncUserWithSupabase();
+            
+            if (syncedUser) {
+                // If sync was successful, retry getting the conversation
+                return getConversationById(conversationId);
+            }
+        } catch (syncError) {
+            console.error("Error syncing user during conversation fetch:", syncError);
+        }
+        
         throw new Error("User not found in database");
     }
 
@@ -202,7 +250,21 @@ export async function getConversationById(conversationId: string) {
 
     if (error || !data) {
         console.error("Error fetching conversation:", error);
-        throw new Error("Conversation not found");
+        
+        // Check if the conversation exists at all
+        const { data: anyConversation, error: anyError } = await supabase
+            .from("conversations")
+            .select("id")
+            .eq("id", conversationId)
+            .single();
+            
+        if (anyError) {
+            // Conversation doesn't exist at all
+            throw new Error("Conversation not found");
+        } else {
+            // Conversation exists but doesn't belong to this user
+            throw new Error("Unauthorized access to conversation");
+        }
     }
 
     return data;
@@ -353,6 +415,21 @@ export async function getConversationMessages(conversationId: string) {
 
     if (userError) {
         console.error("Error finding user:", userError);
+        
+        // Try to sync the user first before failing
+        try {
+            // Import dynamically to avoid circular dependencies
+            const { syncUserWithSupabase } = await import("./user-sync");
+            const syncedUser = await syncUserWithSupabase();
+            
+            if (syncedUser) {
+                // If sync was successful, retry getting messages
+                return getConversationMessages(conversationId);
+            }
+        } catch (syncError) {
+            console.error("Error syncing user during message fetch:", syncError);
+        }
+        
         throw new Error("User not found in database");
     }
 
@@ -364,7 +441,22 @@ export async function getConversationMessages(conversationId: string) {
         .single();
 
     if (convError || !conversation) {
-        throw new Error("Conversation not found");
+        console.error("Error fetching conversation for messages:", convError);
+        
+        // Check if the conversation exists at all
+        const { data: anyConversation, error: anyError } = await supabase
+            .from("conversations")
+            .select("id")
+            .eq("id", conversationId)
+            .single();
+            
+        if (anyError) {
+            // Conversation doesn't exist at all
+            return []; // Return empty array instead of throwing
+        } else {
+            // Conversation exists but doesn't belong to this user
+            throw new Error("Unauthorized access to conversation");
+        }
     }
 
     if (conversation.user_id !== user.id) {
