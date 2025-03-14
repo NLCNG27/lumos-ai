@@ -3,7 +3,7 @@
 import ChatWindow from "@/app/components/chat/ChatWindow";
 import ConversationSidebar from "@/app/components/chat/ConversationSidebar";
 import Image from "next/image";
-import { SignedIn, SignedOut } from "@clerk/nextjs";
+import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -83,26 +83,30 @@ export default function Home() {
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-black">
-            <header className="w-full bg-black border-b border-gray-800 p-4">
-                <div className="max-w-6xl mx-auto flex justify-between items-center">
-                    <div className="flex items-center gap-2">
+            <header className="w-full bg-black border-b border-gray-800 px-4 py-2">
+                <div className="flex justify-between items-center">
+                    <div className="flex items-center">
                         <Image
                             src="/logo.png"
                             alt="Lumos AI"
-                            width={300}
-                            height={30}
+                            width={120}
+                            height={24}
                             priority
+                            className="ml-0"
                         />
                     </div>
 
-                    <button 
-                        onClick={() => setSidebarOpen(!sidebarOpen)}
-                        className="md:hidden text-white p-2"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                        </svg>
-                    </button>
+                    <div className="flex items-center gap-4">
+                        <UserButton afterSignOutUrl="/" />
+                        <button 
+                            onClick={() => setSidebarOpen(!sidebarOpen)}
+                            className="md:hidden text-white p-2"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </header>
 
