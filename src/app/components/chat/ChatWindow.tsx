@@ -28,7 +28,7 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
                 
             </div>
 
-            <div className="flex-1 p-4 overflow-y-auto space-y-4">
+            <div className="flex-1 p-6 overflow-y-auto space-y-6 bg-gradient-to-b from-gray-950 to-black">
                 {messages.length === 0 ? (
                     <div className="text-center text-gray-500 mt-20">
                         <p>
@@ -37,20 +37,25 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
                         </p>
                     </div>
                 ) : (
-                    messages.map((message) => (
-                        <ChatMessage key={message.id} message={message} />
-                    ))
+                    <div className="space-y-6">
+                        {messages.map((message, index) => (
+                            <div key={message.id} className="message-item animate-fadeIn">
+                                <ChatMessage message={message} />
+                            </div>
+                        ))}
+                    </div>
                 )}
 
                 {error && (
-                    <div className="p-2 bg-red-900 text-red-100 rounded-lg text-sm">
-                        Error: {error}
+                    <div className="p-3 bg-red-900/70 text-red-100 rounded-lg text-sm border border-red-800 animate-fadeIn">
+                        <p className="font-medium mb-1">Error</p>
+                        <p>{error}</p>
                     </div>
                 )}
 
                 {isLoading && (
-                    <div className="flex items-center text-gray-500">
-                        <div className="dot-flashing mr-2"></div>
+                    <div className="flex items-center text-gray-400 p-3 animate-fadeIn">
+                        <div className="dot-flashing mr-3"></div>
                         <p>Lumos is thinking...</p>
                     </div>
                 )}
@@ -58,7 +63,7 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
                 <div ref={messagesEndRef} /> 
             </div>
 
-            <div className="bg-black">
+            <div className="bg-gray-950 border-t border-gray-800 p-2 rounded-b-lg">
                 <ChatInput onSendMessage={sendMessage} isLoading={isLoading} />
             </div>
         </div>

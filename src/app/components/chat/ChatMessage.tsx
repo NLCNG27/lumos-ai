@@ -130,18 +130,18 @@ export default function ChatMessage({ message }: ChatMessageProps) {
 
     return (
         <div
-            className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}
+            className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"} mb-6`}
         >
             {/* {!isUser && (
-                <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
-                    <span className="text-white text-xs">AI</span>
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 mt-1">
+                    <span className="text-white text-xs font-medium">AI</span>
                 </div>
             )} */}
             <div
-                className={`max-w-[80%] px-4 py-2 rounded-2xl relative group ${
+                className={`max-w-[85%] px-4 py-3 rounded-2xl relative group ${
                     isUser
-                        ? "bg-blue-500 text-white rounded-tr-none"
-                        : "bg-gray-100 dark:bg-gray-800 rounded-tl-none"
+                        ? "bg-blue-500 text-white rounded-tr-none shadow-sm"
+                        : "bg-gray-50 dark:bg-gray-800/80 text-gray-800 dark:text-gray-100 rounded-tl-none shadow-sm border border-gray-200 dark:border-gray-700"
                 }`}
             >
                 {!isUser && (
@@ -179,43 +179,63 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                     </button>
                 )}
                 {isUser && renderUploadedFiles()}
-                <div className="text-sm markdown-content">
+                <div className={`text-sm markdown-content ${!isUser ? "prose prose-sm dark:prose-invert max-w-none" : ""}`}>
                     <ReactMarkdown
                         components={{
-                            h1: ({...props}: any) => <h1 className="text-xl font-bold my-2" {...props} />,
-                            h2: ({...props}: any) => <h2 className="text-lg font-bold my-2" {...props} />,
-                            h3: ({...props}: any) => <h3 className="text-md font-bold my-1" {...props} />,
-                            h4: ({...props}: any) => <h4 className="text-base font-bold my-1" {...props} />,
+                            h1: ({...props}: any) => <h1 className="text-xl font-bold my-3" {...props} />,
+                            h2: ({...props}: any) => <h2 className="text-lg font-bold my-3" {...props} />,
+                            h3: ({...props}: any) => <h3 className="text-md font-bold my-2" {...props} />,
+                            h4: ({...props}: any) => <h4 className="text-base font-bold my-2" {...props} />,
                             h5: ({...props}: any) => <h5 className="text-sm font-bold my-1" {...props} />,
                             h6: ({...props}: any) => <h6 className="text-xs font-bold my-1" {...props} />,
-                            p: ({...props}: any) => <p className="my-1" {...props} />,
-                            ul: ({ordered, ...props}: any) => <ul className="list-disc pl-5 my-2" {...props} />,
-                            ol: ({ordered, ...props}: any) => <ol className="list-decimal pl-5 my-2" {...props} />,
+                            p: ({...props}: any) => <p className="my-2 leading-relaxed" {...props} />,
+                            ul: ({ordered, ...props}: any) => <ul className="list-disc pl-5 my-3 space-y-1" {...props} />,
+                            ol: ({ordered, ...props}: any) => <ol className="list-decimal pl-5 my-3 space-y-1" {...props} />,
                             li: ({ordered, ...props}: any) => <li className="my-1" {...props} />,
-                            a: ({...props}: any) => <a className="text-blue-400 underline" {...props} />,
+                            a: ({...props}: any) => <a className="text-blue-500 dark:text-blue-400 underline hover:text-blue-700 dark:hover:text-blue-300 transition-colors" {...props} />,
+                            blockquote: ({...props}: any) => <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 py-1 my-3 text-gray-700 dark:text-gray-300 italic" {...props} />,
+                            hr: ({...props}: any) => <hr className="my-4 border-gray-300 dark:border-gray-600" {...props} />,
+                            table: ({...props}: any) => <div className="overflow-x-auto my-3"><table className="min-w-full divide-y divide-gray-300 dark:divide-gray-600 border border-gray-300 dark:border-gray-600 rounded" {...props} /></div>,
+                            thead: ({...props}: any) => <thead className="bg-gray-100 dark:bg-gray-700" {...props} />,
+                            tbody: ({...props}: any) => <tbody className="divide-y divide-gray-200 dark:divide-gray-700" {...props} />,
+                            tr: ({...props}: any) => <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50" {...props} />,
+                            th: ({...props}: any) => <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider" {...props} />,
+                            td: ({...props}: any) => <td className="px-3 py-2 whitespace-nowrap text-sm" {...props} />,
                             code: ({ className, children, inline, ...props }: CodeProps) => {
                                 const match = /language-(\w+)/.exec(className || '');
                                 return match ? (
-                                    <SyntaxHighlighter
-                                        style={vscDarkPlus as any}
-                                        language={match[1]}
-                                        PreTag="div"
-                                        className="rounded-md my-2"
-                                        showLineNumbers={true}
-                                        {...props}
-                                    >
-                                        {String(children).replace(/\n$/, '')}
-                                    </SyntaxHighlighter>
+                                    <div className="relative group">
+                                        <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button 
+                                                className="bg-gray-200 dark:bg-gray-700 rounded-md p-1 text-xs hover:bg-gray-300 dark:hover:bg-gray-600"
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(String(children).replace(/\n$/, ''));
+                                                }}
+                                            >
+                                                Copy
+                                            </button>
+                                        </div>
+                                        <SyntaxHighlighter
+                                            style={vscDarkPlus as any}
+                                            language={match[1]}
+                                            PreTag="div"
+                                            className="rounded-md my-3 text-sm"
+                                            showLineNumbers={true}
+                                            {...props}
+                                        >
+                                            {String(children).replace(/\n$/, '')}
+                                        </SyntaxHighlighter>
+                                    </div>
                                 ) : (
                                     <code
-                                        className="bg-gray-200 dark:bg-gray-700 px-1 rounded"
+                                        className="bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm font-mono"
                                         {...props}
                                     >
                                         {children}
                                     </code>
                                 );
                             },
-                            pre: ({children}: any) => <div className="overflow-hidden rounded-md my-2">{children}</div>,
+                            pre: ({children}: any) => <div className="overflow-hidden rounded-md my-3">{children}</div>,
                         } as Components}
                     >
                         {message.content}
@@ -223,8 +243,8 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                 </div>
             </div>
             {/* {isUser && (
-                <div className="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center">
-                    <span className="text-gray-700 text-xs">You</span>
+                <div className="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center flex-shrink-0 mt-1">
+                    <span className="text-gray-700 dark:text-gray-200 text-xs font-medium">You</span>
                 </div>
             )} */}
         </div>
