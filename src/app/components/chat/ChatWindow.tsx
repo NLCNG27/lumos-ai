@@ -25,12 +25,7 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
                 <h2 className="text-lg font-semibold text-white">
                     {currentConversation ? currentConversation.title : "Lumos AI Assistant"}
                 </h2>
-                <Link 
-                    href="/test-conversations" 
-                    className="text-blue-400 hover:text-blue-300 text-sm"
-                >
-                    Manage Conversations
-                </Link>
+                
             </div>
 
             <div className="flex-grow p-4 overflow-y-auto space-y-4">
