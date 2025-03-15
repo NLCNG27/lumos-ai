@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, memo, useMemo } from "react";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import { useChat } from "@/app/hooks/useChat";
@@ -7,6 +7,10 @@ import Link from "next/link";
 interface ChatWindowProps {
   initialConversationId?: string;
 }
+
+// Create a memoized message component to prevent unnecessary re-renders
+const MemoizedChatMessage = memo(ChatMessage);
+MemoizedChatMessage.displayName = 'MemoizedChatMessage';
 
 export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
     const { messages, isLoading, error, sendMessage, currentConversation } = useChat({
@@ -19,6 +23,17 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
+    // Only render visible messages for better performance
+    // This is a simple virtualization approach - for very large conversations,
+    // consider using a library like react-window or react-virtualized
+    const visibleMessages = useMemo(() => {
+        // For small message lists, render all messages
+        if (messages.length < 50) return messages;
+        
+        // For large message lists, only render the last 50 messages
+        return messages.slice(Math.max(0, messages.length - 50));
+    }, [messages]);
+
     return (
         <div className="flex flex-col h-full bg-black dark:bg-black rounded-lg shadow-lg">
             <div className="p-4 border-b border-gray-800 flex justify-between items-center">
@@ -26,6 +41,12 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
                     {currentConversation ? currentConversation.title : "Lumos AI Assistant"}
                 </h2>
                 
+                {/* Show message count if we're not showing all messages */}
+                {messages.length > 50 && (
+                    <div className="text-xs text-gray-400">
+                        Showing last 50 of {messages.length} messages
+                    </div>
+                )}
             </div>
 
             <div className="flex-1 p-6 overflow-y-auto space-y-6 bg-gradient-to-b from-gray-950 to-black">
@@ -38,9 +59,9 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
                     </div>
                 ) : (
                     <div className="space-y-6">
-                        {messages.map((message, index) => (
+                        {visibleMessages.map((message) => (
                             <div key={message.id} className="message-item animate-fadeIn">
-                                <ChatMessage message={message} />
+                                <MemoizedChatMessage message={message} />
                             </div>
                         ))}
                     </div>

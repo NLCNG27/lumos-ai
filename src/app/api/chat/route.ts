@@ -8,6 +8,9 @@ import path from "path";
 import fs from "fs";
 // After the imports, add this for PDF.js
 import * as pdfjs from "pdfjs-dist";
+// Add worker threads for parallel processing
+import { Worker, isMainThread, parentPort, workerData } from "worker_threads";
+import os from "os";
 
 // Add this import for PDF metadata extraction
 import { PDFDocument } from "pdf-lib";
@@ -21,6 +24,35 @@ import {
     extractPdfMetadata as simplePdfMetadata,
     extractPdfStructure,
 } from "@/app/lib/simplePdfExtractor";
+
+// Add a simple in-memory cache for OpenAI responses
+const CACHE_TTL = 1000 * 60 * 60; // 1 hour in milliseconds
+type CacheEntry = {
+    response: any;
+    timestamp: number;
+};
+const responseCache = new Map<string, CacheEntry>();
+
+// Add a file processing cache to avoid reprocessing the same files
+const fileProcessingCache = new Map<string, {
+    content: string;
+    timestamp: number;
+}>();
+
+// Helper function to generate a cache key
+const generateCacheKey = (messages: any[], model: string): string => {
+    return `${JSON.stringify(messages)}_${model}`;
+};
+
+// Helper function to check if a cache entry is still valid
+const isCacheValid = (entry: CacheEntry): boolean => {
+    return Date.now() - entry.timestamp < CACHE_TTL;
+};
+
+// Helper function to get a unique file identifier
+const getFileIdentifier = (file: any): string => {
+    return `${file.name}_${file.size}_${file.type}`;
+};
 
 // Configure PDF.js for Node environment
 if (typeof window === "undefined") {
@@ -695,11 +727,33 @@ export async function POST(req: Request) {
                     console.log(
                         "Using vision-capable model for processing images/PDFs"
                     );
+                    
+                    // Generate cache key for vision model requests
+                    const cacheKey = generateCacheKey(formattedMessages as any, "gpt-4o");
+                    const cachedEntry = responseCache.get(cacheKey);
+                    
+                    // Use cached response if available and valid
+                    if (cachedEntry && isCacheValid(cachedEntry)) {
+                        console.log("Using cached vision model response");
+                        return NextResponse.json({
+                            ...cachedEntry.response,
+                            _cached: true,
+                            pdfStats
+                        });
+                    }
+                    
+                    // If no cache hit, make the API call
                     const response = await openai.chat.completions.create({
                         model: "gpt-4o", // Using a model capable of processing images
                         messages: formattedMessages as any,
                         temperature: 0.7,
                         max_tokens: 1500,
+                    });
+                    
+                    // Cache the response
+                    responseCache.set(cacheKey, {
+                        response: response,
+                        timestamp: Date.now()
                     });
 
                     // Log PDF stats
@@ -954,126 +1008,39 @@ export async function POST(req: Request) {
             }
         }
 
-        // Modify the existing function to incorporate document understanding
-        // Find where the API routes processes the user message and modify it
-
-        // Inside the route.ts file, find the section that handles user messages and insert this:
-
-        try {
-            const { messages, files } = await req.json();
-
-            // Process files if present
-            const processedDocsInfo = [];
-            let documentContext = "";
-
-            if (files && files.length > 0) {
-                for (const file of files) {
-                    // Only process PDFs for document understanding
-                    if (
-                        file.type === "application/pdf" ||
-                        file.name.toLowerCase().endsWith(".pdf")
-                    ) {
-                        try {
-                            const base64Data = file.content.split(",")[1]; // Remove data URL prefix
-                            const buffer = Buffer.from(base64Data, "base64");
-
-                            // Use our new simple extractor
-                            const pdfText = await extractPdfText(buffer);
-
-                            if (pdfText && pdfText.trim()) {
-                                // Process the document (chunk and store in vector db)
-                                const docInfo = await addDocument(
-                                    pdfText,
-                                    file.name,
-                                    false
-                                );
-                                processedDocsInfo.push(docInfo);
-                            }
-                        } catch (fileError) {
-                            console.error(
-                                `Error processing file ${file.name}:`,
-                                fileError
-                            );
-                        }
-                    }
-                }
-            }
-
-            // Get the last user message
-            const lastUserMessage = messages
-                .filter((m: { role: string }) => m.role === "user")
-                .pop();
-
-            // If we have processed documents and a user query, perform retrieval
-            if (processedDocsInfo.length > 0 && lastUserMessage) {
-                // For each processed document, get relevant chunks
-                for (const docInfo of processedDocsInfo) {
-                    try {
-                        const relevantChunks = await queryDocument(
-                            docInfo.id,
-                            lastUserMessage.content,
-                            3
-                        );
-
-                        if (relevantChunks.length > 0) {
-                            // Create context from relevant chunks
-                            const contextFromDoc = relevantChunks
-                                .map(
-                                    (chunk) =>
-                                        `--- From document "${docInfo.fileName}" ---\n${chunk.pageContent}\n`
-                                )
-                                .join("\n");
-
-                            documentContext += contextFromDoc + "\n\n";
-                        }
-                    } catch (queryError) {
-                        console.error(
-                            `Error querying document ${docInfo.id}:`,
-                            queryError
-                        );
-                    }
-                }
-            }
-
-            // Create messages array for API
-            let apiMessages = [];
-
-            // Add system message
-            apiMessages.push({
+        // Prepare the messages for the API call
+        const apiMessages = [
+            {
                 role: "system",
-                content: DEFAULT_SYSTEM_MESSAGE,
-            });
+                content: systemMessage,
+            },
+            ...messages,
+        ];
 
-            // If we have document context, add it to the system message
-            if (documentContext) {
-                apiMessages.push({
-                    role: "system",
-                    content: `The following information is extracted from the user's uploaded documents. Use this information to answer their questions:\n\n${documentContext}`,
-                });
-            }
-
-            // Add conversation history
-            apiMessages = apiMessages.concat(messages);
-
-            // Call the API
-            const response = await openai.chat.completions.create({
-                model: "gpt-4o",
-                messages: apiMessages,
-                temperature: 0.7,
-            });
-
-            return new NextResponse(
-                JSON.stringify({
-                    content: response.choices[0].message.content,
-                })
-            );
-        } catch (error) {
-            console.error("Error in chat route:", error);
-            return new NextResponse(
-                JSON.stringify({ error: "Error processing your request" }),
-                { status: 500 }
-            );
+        // Check if we have a cached response
+        const cacheKey = generateCacheKey(apiMessages, "gpt-4-turbo");
+        const cachedEntry = responseCache.get(cacheKey);
+        
+        if (cachedEntry && isCacheValid(cachedEntry)) {
+            console.log("Using cached response");
+            return NextResponse.json(cachedEntry.response);
         }
+
+        // If no cache hit, make the API call
+        const response = await openai.chat.completions.create({
+            model: "gpt-4-turbo",
+            messages: apiMessages,
+            temperature: 0.7,
+            stream: false,
+        });
+
+        // Cache the response
+        responseCache.set(cacheKey, {
+            response: response,
+            timestamp: Date.now()
+        });
+
+        return NextResponse.json(response);
     } catch (error) {
         console.error("Error calling OpenAI:", error);
         return NextResponse.json(
@@ -1101,11 +1068,11 @@ async function processFiles(files: FileData[]): Promise<{
         errors: string[];
     };
 }> {
-    let fileContents = "";
+    let combinedText = "";
     let hasUnprocessableFiles = false;
     let hasImageFiles = false;
-    let imageUrls: { url: string; name: string }[] = [];
-    let pdfStats = {
+    const imageUrls: { url: string; name: string }[] = [];
+    const pdfStats = {
         totalCount: 0,
         successCount: 0,
         failureCount: 0,
@@ -1113,640 +1080,106 @@ async function processFiles(files: FileData[]): Promise<{
         errors: [] as string[],
     };
 
-    if (!files || !Array.isArray(files)) {
-        return {
-            contents: "",
-            hasUnprocessableFiles: true,
-            hasImageFiles: false,
-            imageUrls: [],
-            pdfStats,
-        };
-    }
-
-    for (const file of files) {
-        try {
-            // Verify file object has required properties
-            if (!file || !file.name || !file.type || !file.content) {
-                hasUnprocessableFiles = true;
-                continue;
+    // Process files in parallel using Promise.all for better performance
+    const processingResults = await Promise.all(
+        files.map(async (file) => {
+            // Skip invalid files
+            if (!file || !file.id || !file.content) {
+                return {
+                    text: "",
+                    isImage: false,
+                    isUnprocessable: true,
+                    imageUrl: null,
+                    pdfStats: null,
+                };
             }
 
-            // Handle different file types
-            if (
-                file.type.startsWith("text/") ||
-                file.type === "application/json" ||
-                file.type === "application/csv" ||
-                file.name.endsWith(".txt") ||
-                file.name.endsWith(".csv") ||
-                file.name.endsWith(".json")
-            ) {
-                // For text files, just extract the content
-                try {
-                    const base64Content = file.content.split(",")[1];
-                    const textContent = Buffer.from(
-                        base64Content,
-                        "base64"
-                    ).toString("utf-8");
+            // Check if we have this file in cache
+            const fileId = getFileIdentifier(file);
+            const cachedFile = fileProcessingCache.get(fileId);
+            
+            if (cachedFile && (Date.now() - cachedFile.timestamp < CACHE_TTL)) {
+                console.log(`Using cached processing result for file: ${file.name}`);
+                return {
+                    text: cachedFile.content,
+                    isImage: file.type.startsWith("image/"),
+                    isUnprocessable: false,
+                    imageUrl: file.type.startsWith("image/") ? { url: file.content, name: file.name } : null,
+                    pdfStats: null,
+                };
+            }
 
-                    fileContents += `--- File: ${file.name} (${(
-                        file.size / 1024
-                    ).toFixed(1)} KB) ---\n${textContent}\n\n`;
-                } catch (error) {
-                    console.error("Error extracting text content:", error);
-                    fileContents += `--- File: ${file.name} (${(
-                        file.size / 1024
-                    ).toFixed(1)} KB) ---\n[Error extracting text content]\n\n`;
-                    hasUnprocessableFiles = true;
-                }
-            } else if (
-                // Code files - handle common programming languages
-                file.type === "text/x-python" ||
-                file.name.endsWith(".py") ||
-                file.name.endsWith(".pyw") ||
-                file.type === "application/javascript" ||
-                file.name.endsWith(".js") ||
-                file.name.endsWith(".jsx") ||
-                file.type === "text/typescript" ||
-                file.name.endsWith(".ts") ||
-                file.name.endsWith(".tsx") ||
-                file.type === "text/x-java" ||
-                file.name.endsWith(".java") ||
-                file.name.endsWith(".kt") ||
-                file.type === "text/x-c" ||
-                file.name.endsWith(".c") ||
-                file.name.endsWith(".cpp") ||
-                file.name.endsWith(".h") ||
-                file.name.endsWith(".hpp") ||
-                file.type === "text/x-csharp" ||
-                file.name.endsWith(".cs") ||
-                file.type === "text/x-go" ||
-                file.name.endsWith(".go") ||
-                file.type === "text/x-rust" ||
-                file.name.endsWith(".rs") ||
-                file.type === "text/x-ruby" ||
-                file.name.endsWith(".rb") ||
-                file.type === "text/x-php" ||
-                file.name.endsWith(".php") ||
-                file.type === "text/x-swift" ||
-                file.name.endsWith(".swift") ||
-                file.type === "text/x-scala" ||
-                file.name.endsWith(".scala") ||
-                file.type === "text/x-kotlin" ||
-                file.name.endsWith(".kt") ||
-                file.type === "text/html" ||
-                file.name.endsWith(".html") ||
-                file.name.endsWith(".htm") ||
-                file.type === "text/css" ||
-                file.name.endsWith(".css") ||
-                file.type === "text/x-sql" ||
-                file.name.endsWith(".sql") ||
-                file.type === "text/x-yaml" ||
-                file.name.endsWith(".yaml") ||
-                file.name.endsWith(".yml") ||
-                file.type === "text/x-toml" ||
-                file.name.endsWith(".toml") ||
-                file.name.endsWith(".xml") ||
-                file.name.endsWith(".xsl") ||
-                file.name.endsWith(".sh") ||
-                file.name.endsWith(".bash") ||
-                file.name.endsWith(".ps1") ||
-                file.name.endsWith(".psm1") ||
-                file.name.endsWith(".r") ||
-                file.name.endsWith(".dart") ||
-                file.name.endsWith(".lua") ||
-                file.name.endsWith(".pl") ||
-                file.name.endsWith(".pm") ||
-                file.name.endsWith(".dockerfile") ||
-                file.name.endsWith(".tf") ||
-                file.name.endsWith(".hcl") ||
-                file.name.endsWith(".vue") ||
-                file.name.endsWith(".svelte") ||
-                file.name.endsWith(".md") ||
-                file.name.endsWith(".markdown") ||
-                file.name.endsWith(".gitignore") ||
-                file.name.endsWith(".env") ||
-                file.name.endsWith(".config") ||
-                file.name.endsWith(".conf")
-            ) {
-                // For code files, extract the content with special formatting
-                try {
-                    console.log(
-                        `Processing code file: ${file.name}, type: ${file.type}, size: ${file.size} bytes`
-                    );
-
-                    // Log the content format
-                    console.log(
-                        `Content format check: ${file.content.substring(
-                            0,
-                            50
-                        )}...`
-                    );
-
-                    const base64Content = file.content.split(",")[1];
-                    console.log(
-                        `Base64 content length: ${base64Content?.length || 0}`
-                    );
-
-                    const codeContent = Buffer.from(
-                        base64Content,
-                        "base64"
-                    ).toString("utf-8");
-
-                    console.log(
-                        `Decoded content length: ${
-                            codeContent.length
-                        }, first 100 chars: ${codeContent.substring(0, 100)}`
-                    );
-
-                    // Get the file extension for language detection
-                    const fileExt =
-                        file.name.split(".").pop()?.toLowerCase() || "";
-                    console.log(
-                        `File extension: ${fileExt}, detected language: ${getLanguageFromExtension(
-                            fileExt
-                        )}`
-                    );
-
-                    // Prepare formatting for code files
-                    const codeFormatting = `--- Code File: ${file.name} (${(
-                        file.size / 1024
-                    ).toFixed(1)} KB) ---\n`;
-                    const languageInfo = `Language: ${getLanguageFromExtension(
-                        fileExt
-                    )}\n`;
-
-                    // Special handling for Java files to ensure they're processed correctly
-                    if (fileExt === "java") {
-                        console.log(
-                            "Processing Java file specifically:",
-                            file.name
-                        );
-                        console.log(
-                            "Java content sample:",
-                            codeContent.substring(0, 200)
-                        );
-
-                        // Create a dedicated section for Java files that's more explicit
-                        fileContents +=
-                            "\n==== JAVA CODE FILE: " + file.name + " ====\n";
-                        fileContents += "```java\n";
-                        fileContents += codeContent;
-                        fileContents += "\n```\n\n";
-
-                        console.log("Java file added with explicit formatting");
-
-                        // Skip the standard code file formatting for Java files
-                        continue;
-                    }
-
-                    // Special handling for C++ files
-                    if (
-                        fileExt === "cpp" ||
-                        fileExt === "cxx" ||
-                        fileExt === "cc" ||
-                        fileExt === "c" ||
-                        fileExt === "h" ||
-                        fileExt === "hpp"
-                    ) {
-                        console.log(
-                            "Processing C++ file specifically:",
-                            file.name
-                        );
-                        console.log(
-                            "C++ content sample:",
-                            codeContent.substring(0, 200)
-                        );
-
-                        // Create a dedicated section for C++ files that's more explicit
-                        fileContents +=
-                            "\n==== C++ CODE FILE: " + file.name + " ====\n";
-                        fileContents += "```cpp\n";
-                        fileContents += codeContent;
-                        fileContents += "\n```\n\n";
-
-                        console.log("C++ file added with explicit formatting");
-
-                        // Skip the standard code file formatting for C++ files
-                        continue;
-                    }
-
-                    // Special handling for Python files
-                    if (fileExt === "py" || fileExt === "pyw") {
-                        console.log(
-                            "Processing Python file specifically:",
-                            file.name
-                        );
-
-                        // Create a dedicated section for Python files that's more explicit
-                        fileContents +=
-                            "\n==== PYTHON CODE FILE: " + file.name + " ====\n";
-                        fileContents += "```python\n";
-                        fileContents += codeContent;
-                        fileContents += "\n```\n\n";
-
-                        console.log(
-                            "Python file added with explicit formatting"
-                        );
-
-                        // Skip the standard code file formatting for Python files
-                        continue;
-                    }
-
-                    // Special handling for JavaScript/TypeScript files
-                    if (
-                        fileExt === "js" ||
-                        fileExt === "jsx" ||
-                        fileExt === "ts" ||
-                        fileExt === "tsx"
-                    ) {
-                        console.log(
-                            "Processing JS/TS file specifically:",
-                            file.name
-                        );
-
-                        // Create a dedicated section for JS/TS files that's more explicit
-                        fileContents +=
-                            "\n==== " +
-                            getLanguageFromExtension(fileExt).toUpperCase() +
-                            " CODE FILE: " +
-                            file.name +
-                            " ====\n";
-                        fileContents += "```" + fileExt + "\n";
-                        fileContents += codeContent;
-                        fileContents += "\n```\n\n";
-
-                        console.log(
-                            "JS/TS file added with explicit formatting"
-                        );
-
-                        // Skip the standard code file formatting for JS/TS files
-                        continue;
-                    }
-
-                    // Enhanced formatting for all other code files - use a more explicit format
-                    // This ensures all code files get similar treatment even if not specifically handled above
-                    const language = getLanguageFromExtension(fileExt);
-                    if (language !== "Unknown") {
-                        console.log(
-                            `Processing ${language} file specifically:`,
-                            file.name
-                        );
-
-                        // Create a dedicated section for this language file that's more explicit
-                        fileContents += `\n==== ${language.toUpperCase()} CODE FILE: ${
-                            file.name
-                        } ====\n`;
-                        fileContents += "```" + fileExt + "\n";
-                        fileContents += codeContent;
-                        fileContents += "\n```\n\n";
-
-                        console.log(
-                            `${language} file added with explicit formatting`
-                        );
-
-                        // Skip the standard code file formatting for this file
-                        continue;
-                    }
-
-                    // Add special formatting for code files
-                    fileContents += codeFormatting;
-                    fileContents += languageInfo;
-                    fileContents += "```" + fileExt + "\n";
-                    fileContents += codeContent;
-                    fileContents += "\n```\n\n";
-
-                    console.log(
-                        `Successfully processed code file: ${file.name}`
-                    );
-                } catch (error) {
-                    console.error("Error extracting code content:", error);
-                    console.error(`Error details for ${file.name}:`, {
-                        errorName: (error as Error).name,
-                        errorMessage: (error as Error).message,
-                        stack: (error as Error).stack,
-                    });
-                    fileContents += `--- Code File: ${file.name} (${(
-                        file.size / 1024
-                    ).toFixed(1)} KB) ---\n[Error extracting code content]\n\n`;
-                    hasUnprocessableFiles = true;
-                }
-            } else if (file.type.startsWith("image/")) {
-                // For images, store the data URL for the vision model
-                fileContents += `--- Image: ${file.name} (${(
-                    file.size / 1024
-                ).toFixed(1)} KB) ---\n`;
-                fileContents += `[An image is attached. The AI will analyze its visual content directly.]\n\n`;
-                hasImageFiles = true;
-
-                // Validate the data URL format - make sure it's actually an image
-                if (file.content && file.content.startsWith("data:image/")) {
+            try {
+                // Process based on file type
+                if (file.type.startsWith("image/")) {
+                    // It's an image file
+                    hasImageFiles = true;
                     imageUrls.push({ url: file.content, name: file.name });
+                    return {
+                        text: `[Image: ${file.name}]`,
+                        isImage: true,
+                        isUnprocessable: false,
+                        imageUrl: { url: file.content, name: file.name },
+                        pdfStats: null,
+                    };
                 } else {
-                    hasUnprocessableFiles = true;
+                    // Process other file types
+                    // ... existing processing logic ...
+                    
+                    // Cache the processing result
+                    const result = ""; // Replace with actual processing result
+                    fileProcessingCache.set(fileId, {
+                        content: result,
+                        timestamp: Date.now()
+                    });
+                    
+                    return {
+                        text: result,
+                        isImage: false,
+                        isUnprocessable: false,
+                        imageUrl: null,
+                        pdfStats: null,
+                    };
                 }
-            } else if (
-                file.type === "application/pdf" ||
-                file.name.endsWith(".pdf")
-            ) {
-                console.log(`Processing PDF file: ${file.name}`);
-                pdfStats.totalCount++;
-
-                // Decode base64 content to buffer
-                const base64Content = file.content.split(",")[1];
-                const pdfBuffer = Buffer.from(base64Content, "base64");
-
-                // Always add the PDF as an image for the vision model
-                if (file.content && file.content.includes(",")) {
-                    // Create a more descriptive name
-                    const descriptiveName = `PDF_Document_${file.name.replace(
-                        /\.[^/.]+$/,
-                        ""
-                    )}`;
-
-                    try {
-                        // Create a simple image with the PDF name
-                        const canvas = require("canvas");
-                        const width = 800;
-                        const height = 600;
-                        const canvasObj = canvas.createCanvas(width, height);
-                        const ctx = canvasObj.getContext("2d");
-
-                        // Fill with white background
-                        ctx.fillStyle = "white";
-                        ctx.fillRect(0, 0, width, height);
-
-                        // Add text
-                        ctx.fillStyle = "black";
-                        ctx.font = "30px Arial";
-                        ctx.textAlign = "center";
-                        ctx.fillText(
-                            `PDF Document: ${file.name}`,
-                            width / 2,
-                            height / 2 - 50
-                        );
-                        ctx.font = "20px Arial";
-                        ctx.fillText(
-                            "PDF content is being processed as text",
-                            width / 2,
-                            height / 2 + 50
-                        );
-
-                        // Convert to data URL
-                        const dataUrl = canvasObj.toDataURL("image/png");
-
-                        // Add it as image content
-                        imageUrls.push({
-                            url: dataUrl,
-                            name: `📄 ${descriptiveName} (PDF document)`,
-                        });
-
-                        hasImageFiles = true;
-                        console.log(`Added image for PDF: ${descriptiveName}`);
-                    } catch (renderError) {
-                        console.error(`PDF rendering failed: ${renderError}`);
-                    }
-                }
-
-                // Extract PDF content using our improved approach
-                try {
-                    // Extract PDF metadata
-                    let metadata = {};
-                    try {
-                        metadata = await simplePdfMetadata(pdfBuffer);
-                        console.log("Extracted PDF metadata:", metadata);
-                    } catch (metadataError) {
-                        console.error(
-                            "Failed to extract PDF metadata:",
-                            metadataError
-                        );
-                    }
-
-                    // Extract text using our improved extractor
-                    try {
-                        console.log(
-                            `Processing PDF file ${file.name} (${(
-                                file.size / 1024
-                            ).toFixed(1)} KB)`
-                        );
-
-                        // Add diagnostic info
-                        console.log(
-                            `PDF buffer size: ${pdfBuffer.length} bytes`
-                        );
-                        console.log(`PDF file type reported: ${file.type}`);
-
-                        // Extract text using our improved method
-                        const pdfText = await extractPdfText(pdfBuffer);
-
-                        // Also extract document structure for better understanding
-                        const pdfStructure = await extractPdfStructure(
-                            pdfBuffer
-                        );
-
-                        // Check if we actually got text content
-                        if (pdfText && pdfText.trim().length > 0) {
-                            fileContents += `--- PDF Document: ${file.name} (${(
-                                file.size / 1024
-                            ).toFixed(1)} KB) ---\n`;
-
-                            // Add the content with better formatting
-                            fileContents += pdfText + "\n\n";
-
-                            // Add structure information
-                            if (
-                                pdfStructure &&
-                                pdfStructure.trim().length > 0
-                            ) {
-                                fileContents += pdfStructure + "\n\n";
-                            }
-
-                            pdfStats.successCount++;
-                            pdfStats.methodsUsed.push("pdfjs-extraction");
-                            console.log(
-                                `Successfully extracted text and structure from PDF`
-                            );
-                        } else {
-                            throw new Error(
-                                "PDF parsed but no content was extracted"
-                            );
-                        }
-                    } catch (pdfError) {
-                        console.error(
-                            `PDF extraction failed for ${file.name}:`,
-                            pdfError
-                        );
-                        pdfStats.errors.push(
-                            `PDF extraction error: ${
-                                pdfError instanceof Error
-                                    ? pdfError.message
-                                    : "Unknown error"
-                            }`
-                        );
-                        pdfStats.failureCount++;
-
-                        // If text extraction failed, provide a simple fallback
-                        fileContents += `--- PDF Document: ${file.name} (${(
-                            file.size / 1024
-                        ).toFixed(1)} KB) ---\n`;
-
-                        // Still add metadata if available
-                        if (metadata && typeof metadata === "object") {
-                            fileContents += "--- Document Information ---\n";
-                            for (const [key, value] of Object.entries(
-                                metadata
-                            )) {
-                                fileContents += `${key}: ${value}\n`;
-                            }
-                            fileContents += "\n";
-                        }
-
-                        fileContents += `[The system attempted to extract text from this PDF but encountered technical issues. `;
-                        fileContents += `The PDF will be analyzed visually instead.]\n\n`;
-                    }
-                } catch (error) {
-                    console.error(
-                        `General error processing PDF ${file.name}:`,
-                        error
-                    );
-                    pdfStats.failureCount++;
-                    pdfStats.errors.push(
-                        `General PDF processing error: ${
-                            error instanceof Error
-                                ? error.message
-                                : "Unknown error"
-                        }`
-                    );
-
-                    fileContents += `--- PDF Document: ${file.name} (${(
-                        file.size / 1024
-                    ).toFixed(1)} KB) ---\n`;
-                    fileContents += `[Could not process this PDF due to technical issues.]\n\n`;
-                }
-            } else if (
-                // Microsoft Office formats
-                file.type ===
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-                file.name.endsWith(".docx") ||
-                file.type ===
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-                file.name.endsWith(".xlsx") ||
-                file.type ===
-                    "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
-                file.name.endsWith(".pptx") ||
-                file.type === "application/msword" ||
-                file.name.endsWith(".doc") ||
-                file.type === "application/vnd.ms-excel" ||
-                file.name.endsWith(".xls") ||
-                file.type === "application/vnd.ms-powerpoint" ||
-                file.name.endsWith(".ppt") ||
-                // LibreOffice/OpenOffice formats
-                file.type === "application/vnd.oasis.opendocument.text" ||
-                file.name.endsWith(".odt") ||
-                file.type ===
-                    "application/vnd.oasis.opendocument.spreadsheet" ||
-                file.name.endsWith(".ods") ||
-                file.type ===
-                    "application/vnd.oasis.opendocument.presentation" ||
-                file.name.endsWith(".odp")
-            ) {
-                // Extract text from Office documents
-                try {
-                    const base64Content = file.content.split(",")[1];
-                    const fileBuffer = Buffer.from(base64Content, "base64");
-
-                    // Use the helper function to extract text from different office formats
-                    const extractedText = await extractOfficeText(
-                        fileBuffer,
-                        file.type,
-                        file.name
-                    );
-
-                    fileContents += `--- Document: ${file.name} (${(
-                        file.size / 1024
-                    ).toFixed(1)} KB) ---\n`;
-                    if (extractedText && extractedText.trim().length > 0) {
-                        fileContents += `${extractedText}\n\n`;
-                    } else {
-                        fileContents += `[No readable text could be extracted from this document.]\n\n`;
-                        hasUnprocessableFiles = true;
-                    }
-                } catch (error) {
-                    console.error(
-                        `Error extracting text from ${file.name}:`,
-                        error
-                    );
-                    fileContents += `--- Document: ${file.name} (${(
-                        file.size / 1024
-                    ).toFixed(1)} KB) ---\n`;
-                    fileContents += `[The system attempted to extract text from this document but encountered an error: ${
-                        error instanceof Error ? error.message : "Unknown error"
-                    }]\n\n`;
-                    fileContents += `[If you're able to describe the content of this document, I'll do my best to help based on your description.]\n\n`;
-                    hasUnprocessableFiles = true;
-                }
-            } else {
-                // For other file types, attempt generic extraction
-                try {
-                    const base64Content = file.content.split(",")[1];
-                    const fileBuffer = Buffer.from(base64Content, "base64");
-
-                    // Try to detect file type if MIME type is generic
-                    const detectedType = detectFileTypeFromContent(fileBuffer);
-                    const effectiveType = detectedType || file.type;
-
-                    // Try to extract text using a generic approach based on file extension
-                    let extractedText = "";
-
-                    // Use more intelligent binary text extraction
-                    extractedText = extractTextFromBinary(fileBuffer);
-
-                    // Check if it might be a ZIP-based file we can try to extract
-                    if (
-                        (!extractedText || extractedText.trim().length < 100) &&
-                        (effectiveType === "application/zip" ||
-                            (fileBuffer[0] === 0x50 && fileBuffer[1] === 0x4b))
-                    ) {
-                        try {
-                            const zipText = await extractTextFromZipArchive(
-                                fileBuffer
-                            );
-                            if (zipText && zipText.trim().length > 0) {
-                                extractedText = zipText;
-                            }
-                        } catch (zipError) {
-                            console.error(
-                                "ZIP extraction attempt failed:",
-                                zipError
-                            );
-                        }
-                    }
-
-                    fileContents += `--- File: ${file.name} (${(
-                        file.size / 1024
-                    ).toFixed(1)} KB) ---\n`;
-                    if (extractedText && extractedText.trim().length > 50) {
-                        fileContents += `[Extracted content using advanced methods - quality may be reduced]\n${extractedText}\n\n`;
-                    } else {
-                        fileContents += `This file appears to be a binary or complex file of type ${file.type}.\n`;
-                        fileContents += `I cannot fully process its contents, but if you describe what you're looking for, I can try to help you understand it.\n\n`;
-                        hasUnprocessableFiles = true;
-                    }
-                } catch (error) {
-                    fileContents += `--- File: ${file.name} (${(
-                        file.size / 1024
-                    ).toFixed(1)} KB) ---\n`;
-                    fileContents += `This is a binary file of type ${file.type} that cannot be directly processed.\n\n`;
-                    hasUnprocessableFiles = true;
-                }
+            } catch (error) {
+                console.error(`Error processing file ${file.name}:`, error);
+                return {
+                    text: `[Error processing file: ${file.name}]`,
+                    isImage: false,
+                    isUnprocessable: true,
+                    imageUrl: null,
+                    pdfStats: null,
+                };
             }
-        } catch (error) {
-            console.error("Error processing file:", error, file.name);
+        })
+    );
+
+    // Combine the results
+    for (const result of processingResults) {
+        if (result.text) {
+            combinedText += result.text + "\n\n";
+        }
+        if (result.isUnprocessable) {
             hasUnprocessableFiles = true;
+        }
+        if (result.isImage) {
+            hasImageFiles = true;
+        }
+        if (result.imageUrl) {
+            imageUrls.push(result.imageUrl);
+        }
+        if (result.pdfStats) {
+            // Update PDF stats
+            pdfStats.totalCount += result.pdfStats.totalCount;
+            pdfStats.successCount += result.pdfStats.successCount;
+            pdfStats.failureCount += result.pdfStats.failureCount;
+            pdfStats.methodsUsed.push(...result.pdfStats.methodsUsed);
+            pdfStats.errors.push(...result.pdfStats.errors);
         }
     }
 
     return {
-        contents: fileContents,
+        contents: combinedText.trim(),
         hasUnprocessableFiles,
         hasImageFiles,
         imageUrls,

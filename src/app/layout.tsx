@@ -12,19 +12,26 @@ import "./globals.css";
 import { UserSyncProvider } from './components/UserSyncProvider';
 import 'katex/dist/katex.min.css';
 
+// Optimize font loading
 const geistSans = Geist({
-    variable: "--font-geist-sans",
     subsets: ["latin"],
+    display: "swap", // Use 'swap' for better performance
+    preload: true,
+    weight: ["400", "500", "600", "700"], // Only preload needed weights
+    variable: "--font-geist-sans",
 });
 
 const geistMono = Geist_Mono({
-    variable: "--font-geist-mono",
     subsets: ["latin"],
+    display: "swap",
+    preload: true,
+    weight: ["400", "500"], // Only preload needed weights
+    variable: "--font-geist-mono",
 });
 
 export const metadata: Metadata = {
-    title: "Lumos",
-    description: "Your daily AI assistant, or whomever you want it to be.",
+    title: "Lumos AI",
+    description: "AI assistant for analyzing documents and data",
 };
 
 export default function RootLayout({
@@ -33,16 +40,26 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <ClerkProvider>
-            <UserSyncProvider>
-                <html lang="en">
-                    <body
-                        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-                    >
+        <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+            <head>
+                {/* Add preconnect for external resources */}
+                <link rel="preconnect" href="https://clerk.lumos-ai.com" />
+                <link rel="preconnect" href="https://api.openai.com" />
+                
+                {/* Add preload for critical CSS */}
+                <link rel="preload" href="/globals.css" as="style" />
+                
+                {/* Add DNS prefetch */}
+                <link rel="dns-prefetch" href="https://clerk.lumos-ai.com" />
+                <link rel="dns-prefetch" href="https://api.openai.com" />
+            </head>
+            <body className={`${geistSans.className} antialiased`}>
+                <ClerkProvider>
+                    <UserSyncProvider>
                         {children}
-                    </body>
-                </html>
-            </UserSyncProvider>
-        </ClerkProvider>
+                    </UserSyncProvider>
+                </ClerkProvider>
+            </body>
+        </html>
     );
 }

@@ -1,6 +1,6 @@
 import { Message, ProcessedFile } from "@/app/types";
 import ReactMarkdown from "react-markdown";
-import { useState } from "react";
+import { useState, memo } from "react";
 import Image from "next/image";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
@@ -12,15 +12,16 @@ type ChatMessageProps = {
     message: Message;
 };
 
-// Define our own CodeProps type
-interface CodeProps {
+// Update CodeProps interface to make children optional and extend from React.HTMLAttributes
+interface CodeProps extends React.HTMLAttributes<HTMLElement> {
     node?: any;
     inline?: boolean;
     className?: string;
-    children: React.ReactNode;
+    children?: React.ReactNode;
 }
 
-export default function ChatMessage({ message }: ChatMessageProps) {
+// Use React.memo to prevent unnecessary re-renders
+const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
     const isUser = message.role === "user";
     const [isCopied, setIsCopied] = useState(false);
 
@@ -426,4 +427,9 @@ export default function ChatMessage({ message }: ChatMessageProps) {
             )} */}
         </div>
     );
-}
+});
+
+// Add display name for debugging
+ChatMessage.displayName = 'ChatMessage';
+
+export default ChatMessage;
