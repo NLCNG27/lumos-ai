@@ -5,6 +5,8 @@ import Image from "next/image";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import type { Components } from 'react-markdown';
+import 'katex/dist/katex.min.css';
+import { InlineMath, BlockMath } from 'react-katex';
 
 type ChatMessageProps = {
     message: Message;
@@ -128,6 +130,240 @@ export default function ChatMessage({ message }: ChatMessageProps) {
         );
     };
 
+    // Process the message content to extract LaTeX blocks
+    const processLatexContent = (content: string) => {
+        // Check if content contains LaTeX delimiters
+        if (!content.includes('\\[') && !content.includes('\\(')) {
+            return { hasLatex: false, processedContent: content };
+        }
+
+        // Process the content to handle multiline LaTeX blocks
+        const lines = content.split('\n');
+        const processedLines = [];
+        let inLatexBlock = false;
+        let latexContent = '';
+        let currentBlockType = '';
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+
+            // Check for LaTeX block start
+            if (line.includes('\\[')) {
+                inLatexBlock = true;
+                currentBlockType = 'block';
+                latexContent = line.replace('\\[', '').trim();
+                continue;
+            } 
+            // Check for LaTeX inline start
+            else if (line.includes('\\(')) {
+                inLatexBlock = true;
+                currentBlockType = 'inline';
+                latexContent = line.replace('\\(', '').trim();
+                continue;
+            }
+            // Check for LaTeX block end
+            else if (inLatexBlock && line.includes('\\]')) {
+                latexContent += ' ' + line.replace('\\]', '').trim();
+                processedLines.push({
+                    type: 'latex',
+                    mode: currentBlockType,
+                    content: latexContent.trim()
+                });
+                inLatexBlock = false;
+                latexContent = '';
+                continue;
+            }
+            // Check for LaTeX inline end
+            else if (inLatexBlock && line.includes('\\)')) {
+                latexContent += ' ' + line.replace('\\)', '').trim();
+                processedLines.push({
+                    type: 'latex',
+                    mode: currentBlockType,
+                    content: latexContent.trim()
+                });
+                inLatexBlock = false;
+                latexContent = '';
+                continue;
+            }
+            // Continue gathering content for a LaTeX block
+            else if (inLatexBlock) {
+                latexContent += ' ' + line.trim();
+                continue;
+            }
+            // Handle markdown headings (###, ####, etc.)
+            else if (line.trim().startsWith('#')) {
+                const headerMatch = line.trim().match(/^(#+)\s*(.*)$/);
+                if (headerMatch) {
+                    processedLines.push({
+                        type: 'heading',
+                        level: headerMatch[1].length,
+                        content: headerMatch[2]
+                    });
+                } else {
+                    processedLines.push({
+                        type: 'text',
+                        content: line
+                    });
+                }
+            }
+            // Handle list items with headings (like "1. **Calculus**:")
+            else if (/^\d+\.\s+\*\*.*?\*\*:/.test(line)) {
+                processedLines.push({
+                    type: 'listHeading',
+                    content: line
+                });
+            }
+            // Regular text line
+            else {
+                processedLines.push({
+                    type: 'text',
+                    content: line
+                });
+            }
+        }
+
+        return { hasLatex: true, processedLines };
+    };
+
+    // Component to render the processed content
+    const ProcessedContent = () => {
+        const processedContent = processLatexContent(message.content);
+
+        if (!processedContent.hasLatex) {
+            return (
+                <ReactMarkdown
+                    components={{
+                        h1: ({...props}: any) => <h1 className="text-xl font-bold my-3" {...props} />,
+                        h2: ({...props}: any) => <h2 className="text-lg font-bold my-3" {...props} />,
+                        h3: ({...props}: any) => <h3 className="text-md font-bold my-2" {...props} />,
+                        h4: ({...props}: any) => <h4 className="text-base font-bold my-2" {...props} />,
+                        h5: ({...props}: any) => <h5 className="text-sm font-bold my-1" {...props} />,
+                        h6: ({...props}: any) => <h6 className="text-xs font-bold my-1" {...props} />,
+                        p: ({...props}: any) => <p className="my-2 leading-relaxed" {...props} />,
+                        ul: ({...props}: any) => <ul className="list-disc pl-5 my-3 space-y-1" {...props} />,
+                        ol: ({...props}: any) => <ol className="list-decimal pl-5 my-3 space-y-1" {...props} />,
+                        li: ({...props}: any) => <li className="my-1" {...props} />,
+                        a: ({...props}: any) => <a className="text-blue-500 dark:text-blue-400 underline hover:text-blue-700 dark:hover:text-blue-300 transition-colors" {...props} />,
+                        blockquote: ({...props}: any) => <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 py-1 my-3 text-gray-700 dark:text-gray-300 italic" {...props} />,
+                        hr: ({...props}: any) => <hr className="my-4 border-gray-300 dark:border-gray-600" {...props} />,
+                        table: ({...props}: any) => <div className="overflow-x-auto my-3"><table className="min-w-full divide-y divide-gray-300 dark:divide-gray-600 border border-gray-300 dark:border-gray-600 rounded" {...props} /></div>,
+                        thead: ({...props}: any) => <thead className="bg-gray-100 dark:bg-gray-700" {...props} />,
+                        tbody: ({...props}: any) => <tbody className="divide-y divide-gray-200 dark:divide-gray-700" {...props} />,
+                        tr: ({...props}: any) => <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50" {...props} />,
+                        th: ({...props}: any) => <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider" {...props} />,
+                        td: ({...props}: any) => <td className="px-3 py-2 whitespace-nowrap text-sm" {...props} />,
+                        code: ({ className, children, inline, ...props }: CodeProps) => {
+                            const match = /language-(\w+)/.exec(className || '');
+                            
+                            if (match && (match[1] === 'latex' || match[1] === 'math' || match[1] === 'tex')) {
+                                try {
+                                    return <BlockMath math={String(children).replace(/\n$/, '')} />;
+                                } catch (error) {
+                                    console.error('Error rendering LaTeX in code block:', error);
+                                    return <code className="bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>;
+                                }
+                            }
+                            
+                            return match ? (
+                                <div className="relative group">
+                                    <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                            className="bg-gray-200 dark:bg-gray-700 rounded-md p-1 text-xs hover:bg-gray-300 dark:hover:bg-gray-600"
+                                            onClick={() => navigator.clipboard.writeText(String(children).replace(/\n$/, ''))}
+                                        >
+                                            Copy
+                                        </button>
+                                    </div>
+                                    <SyntaxHighlighter
+                                        style={vscDarkPlus as any}
+                                        language={match[1]}
+                                        PreTag="div"
+                                        className="rounded-md my-3 text-sm"
+                                        showLineNumbers={true}
+                                        {...props}
+                                    >
+                                        {String(children).replace(/\n$/, '')}
+                                    </SyntaxHighlighter>
+                                </div>
+                            ) : (
+                                <code className="bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>
+                            );
+                        },
+                        pre: ({children}: any) => <div className="overflow-hidden rounded-md my-3">{children}</div>,
+                    } as Components}
+                >
+                    {message.content}
+                </ReactMarkdown>
+            );
+        }
+
+        return (
+            <div className="space-y-3">
+                {processedContent.processedLines?.map((line, index) => {
+                    if (line.type === 'latex') {
+                        try {
+                            return line.mode === 'inline' ? (
+                                <div key={index} className="py-1">
+                                    <InlineMath math={line.content} />
+                                </div>
+                            ) : (
+                                <div key={index} className="py-2">
+                                    <BlockMath math={line.content} />
+                                </div>
+                            );
+                        } catch (error) {
+                            console.error('Error rendering LaTeX:', error);
+                            return (
+                                <code key={index} className="block bg-red-100 dark:bg-red-900/30 p-2 rounded text-sm font-mono my-2">
+                                    {line.mode === 'block' ? '\\[' : '\\('}{line.content}{line.mode === 'block' ? '\\]' : '\\)'}
+                                </code>
+                            );
+                        }
+                    } else if (line.type === 'heading') {
+                        // Render appropriate heading based on level
+                        const headingLevel = Math.min(line.level || 3, 6);
+                        
+                        switch (headingLevel) {
+                            case 1:
+                                return <h1 key={index} className="text-2xl font-bold my-4">{line.content}</h1>;
+                            case 2:
+                                return <h2 key={index} className="text-xl font-bold my-3">{line.content}</h2>;
+                            case 3:
+                                return <h3 key={index} className="text-lg font-bold my-3">{line.content}</h3>;
+                            case 4:
+                                return <h4 key={index} className="text-base font-bold my-2">{line.content}</h4>;
+                            case 5:
+                                return <h5 key={index} className="text-sm font-bold my-1">{line.content}</h5>;
+                            case 6:
+                                return <h6 key={index} className="text-xs font-bold my-1">{line.content}</h6>;
+                            default:
+                                return <h3 key={index} className="text-lg font-bold my-3">{line.content}</h3>;
+                        }
+                    } else if (line.type === 'listHeading') {
+                        // Process list items with headings (like "1. **Calculus**:")
+                        const match = line.content.match(/^(\d+)\.\s+\*\*(.+?)\*\*:(.*)/);
+                        if (match) {
+                            const [, number, heading, remainingText] = match;
+                            return (
+                                <div key={index} className="flex">
+                                    <span className="font-medium mr-2">{number}.</span>
+                                    <div>
+                                        <strong>{heading}:</strong>
+                                        {remainingText}
+                                    </div>
+                                </div>
+                            );
+                        }
+                        return <div key={index}>{line.content}</div>;
+                    } else {
+                        // Regular text line
+                        return line.content.trim() ? <div key={index}>{line.content}</div> : <div key={index} className="h-4"></div>;
+                    }
+                })}
+            </div>
+        );
+    };
+
     return (
         <div
             className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"} mb-6`}
@@ -180,66 +416,7 @@ export default function ChatMessage({ message }: ChatMessageProps) {
                 )}
                 {isUser && renderUploadedFiles()}
                 <div className={`text-sm markdown-content ${!isUser ? "prose prose-sm dark:prose-invert max-w-none" : ""}`}>
-                    <ReactMarkdown
-                        components={{
-                            h1: ({...props}: any) => <h1 className="text-xl font-bold my-3" {...props} />,
-                            h2: ({...props}: any) => <h2 className="text-lg font-bold my-3" {...props} />,
-                            h3: ({...props}: any) => <h3 className="text-md font-bold my-2" {...props} />,
-                            h4: ({...props}: any) => <h4 className="text-base font-bold my-2" {...props} />,
-                            h5: ({...props}: any) => <h5 className="text-sm font-bold my-1" {...props} />,
-                            h6: ({...props}: any) => <h6 className="text-xs font-bold my-1" {...props} />,
-                            p: ({...props}: any) => <p className="my-2 leading-relaxed" {...props} />,
-                            ul: ({ordered, ...props}: any) => <ul className="list-disc pl-5 my-3 space-y-1" {...props} />,
-                            ol: ({ordered, ...props}: any) => <ol className="list-decimal pl-5 my-3 space-y-1" {...props} />,
-                            li: ({ordered, ...props}: any) => <li className="my-1" {...props} />,
-                            a: ({...props}: any) => <a className="text-blue-500 dark:text-blue-400 underline hover:text-blue-700 dark:hover:text-blue-300 transition-colors" {...props} />,
-                            blockquote: ({...props}: any) => <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 py-1 my-3 text-gray-700 dark:text-gray-300 italic" {...props} />,
-                            hr: ({...props}: any) => <hr className="my-4 border-gray-300 dark:border-gray-600" {...props} />,
-                            table: ({...props}: any) => <div className="overflow-x-auto my-3"><table className="min-w-full divide-y divide-gray-300 dark:divide-gray-600 border border-gray-300 dark:border-gray-600 rounded" {...props} /></div>,
-                            thead: ({...props}: any) => <thead className="bg-gray-100 dark:bg-gray-700" {...props} />,
-                            tbody: ({...props}: any) => <tbody className="divide-y divide-gray-200 dark:divide-gray-700" {...props} />,
-                            tr: ({...props}: any) => <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50" {...props} />,
-                            th: ({...props}: any) => <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider" {...props} />,
-                            td: ({...props}: any) => <td className="px-3 py-2 whitespace-nowrap text-sm" {...props} />,
-                            code: ({ className, children, inline, ...props }: CodeProps) => {
-                                const match = /language-(\w+)/.exec(className || '');
-                                return match ? (
-                                    <div className="relative group">
-                                        <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button 
-                                                className="bg-gray-200 dark:bg-gray-700 rounded-md p-1 text-xs hover:bg-gray-300 dark:hover:bg-gray-600"
-                                                onClick={() => {
-                                                    navigator.clipboard.writeText(String(children).replace(/\n$/, ''));
-                                                }}
-                                            >
-                                                Copy
-                                            </button>
-                                        </div>
-                                        <SyntaxHighlighter
-                                            style={vscDarkPlus as any}
-                                            language={match[1]}
-                                            PreTag="div"
-                                            className="rounded-md my-3 text-sm"
-                                            showLineNumbers={true}
-                                            {...props}
-                                        >
-                                            {String(children).replace(/\n$/, '')}
-                                        </SyntaxHighlighter>
-                                    </div>
-                                ) : (
-                                    <code
-                                        className="bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm font-mono"
-                                        {...props}
-                                    >
-                                        {children}
-                                    </code>
-                                );
-                            },
-                            pre: ({children}: any) => <div className="overflow-hidden rounded-md my-3">{children}</div>,
-                        } as Components}
-                    >
-                        {message.content}
-                    </ReactMarkdown>
+                    <ProcessedContent />
                 </div>
             </div>
             {/* {isUser && (
