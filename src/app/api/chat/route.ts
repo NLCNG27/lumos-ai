@@ -45,8 +45,8 @@ const generateCacheKey = (messages: any[], model: string): string => {
 };
 
 // Helper function to check if a cache entry is still valid
-const isCacheValid = (entry: CacheEntry): boolean => {
-    return Date.now() - entry.timestamp < CACHE_TTL;
+const isCacheValid = (entry: CacheEntry | undefined): entry is CacheEntry => {
+    return !!entry && (Date.now() - entry.timestamp < CACHE_TTL);
 };
 
 // Helper function to get a unique file identifier
@@ -736,7 +736,7 @@ export async function POST(req: Request) {
                     if (cachedEntry && isCacheValid(cachedEntry)) {
                         console.log("Using cached vision model response");
                         return NextResponse.json({
-                            ...cachedEntry.response,
+                            ...cachedEntry!.response,
                             _cached: true,
                             pdfStats
                         });
@@ -1023,7 +1023,7 @@ export async function POST(req: Request) {
         
         if (cachedEntry && isCacheValid(cachedEntry)) {
             console.log("Using cached response");
-            return NextResponse.json(cachedEntry.response);
+            return NextResponse.json(cachedEntry!.response);
         }
 
         // If no cache hit, make the API call
@@ -1080,6 +1080,21 @@ async function processFiles(files: FileData[]): Promise<{
         errors: [] as string[],
     };
 
+    // Define a type for the processing results
+    type ProcessingResult = {
+        text: string;
+        isImage: boolean;
+        isUnprocessable: boolean;
+        imageUrl: { url: string; name: string } | null;
+        pdfStats: {
+            totalCount: number;
+            successCount: number;
+            failureCount: number;
+            methodsUsed: string[];
+            errors: string[];
+        } | null;
+    };
+
     // Process files in parallel using Promise.all for better performance
     const processingResults = await Promise.all(
         files.map(async (file) => {
@@ -1091,7 +1106,7 @@ async function processFiles(files: FileData[]): Promise<{
                     isUnprocessable: true,
                     imageUrl: null,
                     pdfStats: null,
-                };
+                } as ProcessingResult;
             }
 
             // Check if we have this file in cache
@@ -1106,7 +1121,7 @@ async function processFiles(files: FileData[]): Promise<{
                     isUnprocessable: false,
                     imageUrl: file.type.startsWith("image/") ? { url: file.content, name: file.name } : null,
                     pdfStats: null,
-                };
+                } as ProcessingResult;
             }
 
             try {
@@ -1121,7 +1136,7 @@ async function processFiles(files: FileData[]): Promise<{
                         isUnprocessable: false,
                         imageUrl: { url: file.content, name: file.name },
                         pdfStats: null,
-                    };
+                    } as ProcessingResult;
                 } else {
                     // Process other file types
                     // ... existing processing logic ...
@@ -1139,7 +1154,7 @@ async function processFiles(files: FileData[]): Promise<{
                         isUnprocessable: false,
                         imageUrl: null,
                         pdfStats: null,
-                    };
+                    } as ProcessingResult;
                 }
             } catch (error) {
                 console.error(`Error processing file ${file.name}:`, error);
@@ -1149,7 +1164,7 @@ async function processFiles(files: FileData[]): Promise<{
                     isUnprocessable: true,
                     imageUrl: null,
                     pdfStats: null,
-                };
+                } as ProcessingResult;
             }
         })
     );
