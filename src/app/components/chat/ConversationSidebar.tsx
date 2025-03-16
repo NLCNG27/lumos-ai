@@ -13,7 +13,7 @@ function DeleteConfirmationModal({
   onClose, 
   onConfirm, 
   conversationTitle,
-  isDeleteAll = false
+  isDeleteAll = false 
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
