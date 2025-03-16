@@ -12,12 +12,14 @@ function DeleteConfirmationModal({
   isOpen, 
   onClose, 
   onConfirm, 
-  conversationTitle 
+  conversationTitle,
+  isDeleteAll = false
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
   onConfirm: () => void;
   conversationTitle: string;
+  isDeleteAll?: boolean;
 }) {
   if (!isOpen) return null;
   
@@ -29,10 +31,13 @@ function DeleteConfirmationModal({
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
-            <h3 className="text-lg font-medium">Delete Conversation</h3>
+            <h3 className="text-lg font-medium">{isDeleteAll ? "Clear All Conversations" : "Delete Conversation"}</h3>
           </div>
           <p className="text-gray-300 mb-6">
-            Are you sure you want to delete <span className="font-semibold">"{conversationTitle || 'this conversation'}"</span>? This action cannot be undone.
+            {isDeleteAll 
+              ? "Are you sure you want to delete ALL conversations? This action cannot be undone."
+              : <>Are you sure you want to delete <span className="font-semibold">"{conversationTitle || 'this conversation'}"</span>? This action cannot be undone.</>
+            }
           </p>
           <div className="flex justify-end space-x-3">
             <button
@@ -45,7 +50,7 @@ function DeleteConfirmationModal({
               onClick={onConfirm}
               className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors"
             >
-              Delete
+              {isDeleteAll ? "Delete All" : "Delete"}
             </button>
           </div>
         </div>
@@ -64,6 +69,7 @@ export default function ConversationSidebar({
   const [showArchived, setShowArchived] = useState(false);
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteAllModalOpen, setDeleteAllModalOpen] = useState(false);
   const [conversationToDelete, setConversationToDelete] = useState<Conversation | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -209,6 +215,39 @@ export default function ConversationSidebar({
     setActiveMenu(activeMenu === conversationId ? null : conversationId);
   };
 
+  // Add a function to clear all conversations
+  const clearAllConversations = async () => {
+    setLoading(true);
+    
+    try {
+      const response = await fetch('/api/conversations/clear-all', {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to clear conversations');
+      }
+      
+      // Refresh the conversations list
+      await fetchConversations();
+      
+      // If we deleted the current conversation, create a new one
+      if (currentConversationId && !conversations.some(c => c.id === currentConversationId)) {
+        await createNewConversation();
+      }
+      
+      // Close the modal
+      setDeleteAllModalOpen(false);
+      
+    } catch (error: any) {
+      console.error('Error clearing conversations:', error);
+      alert('Failed to clear all conversations. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Load conversations on initial render
   useEffect(() => {
     fetchConversations();
@@ -349,30 +388,56 @@ export default function ConversationSidebar({
               />
               Show archived
             </label>
-            <button
-              onClick={fetchConversations}
-              className="text-blue-400 hover:text-blue-300 transition-transform duration-300 hover:rotate-180"
-              disabled={loading}
-              title="Refresh conversations"
-            >
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                className="h-5 w-5" 
-                fill="none" 
-                viewBox="0 0 24 24" 
-                stroke="currentColor"
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setDeleteAllModalOpen(true)}
+                className="text-red-400 hover:text-red-300 relative"
+                disabled={loading}
+                title="Clear all conversations"
               >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2} 
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
-                />
-              </svg>
-              {loading && (
-                <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
-              )}
-            </button>
+                <svg 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  className="h-5 w-5" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={2} 
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
+                  />
+                </svg>
+                {loading && (
+                  <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-red-500 animate-pulse"></span>
+                )}
+              </button>
+              <button
+                onClick={fetchConversations}
+                className="text-blue-400 hover:text-blue-300 transition-transform duration-300 hover:rotate-180 relative"
+                disabled={loading}
+                title="Refresh conversations"
+              >
+                <svg 
+                  xmlns="http://www.w3.org/2000/svg" 
+                  className="h-5 w-5" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor"
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={2} 
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+                  />
+                </svg>
+                {loading && (
+                  <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
+                )}
+              </button>
+            </div>
           </div>
           
         </div>
@@ -387,6 +452,15 @@ export default function ConversationSidebar({
         }}
         onConfirm={deleteConversation}
         conversationTitle={conversationToDelete?.title || ''}
+      />
+
+      {/* Delete All Confirmation Modal */}
+      <DeleteConfirmationModal 
+        isOpen={deleteAllModalOpen}
+        onClose={() => setDeleteAllModalOpen(false)}
+        onConfirm={clearAllConversations}
+        conversationTitle=""
+        isDeleteAll={true}
       />
     </>
   );

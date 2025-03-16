@@ -1,6 +1,6 @@
 import { Message, ProcessedFile } from "@/app/types";
 import ReactMarkdown from "react-markdown";
-import { useState, memo, useRef } from "react";
+import { useState, memo, useRef, useEffect } from "react";
 import Image from "next/image";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
@@ -10,6 +10,10 @@ import { InlineMath, BlockMath } from 'react-katex';
 import DownloadButton from '../ui/DownloadButton';
 import CodeBlockMenu from '../ui/CodeBlockMenu';
 import { isDownloadableCode, suggestFilename } from '@/app/lib/fileUtils';
+import DatasetPreview from '../ui/DatasetPreview';
+import remarkMath from 'remark-math';
+import remarkGfm from 'remark-gfm';
+import rehypeKatex from 'rehype-katex';
 
 type ChatMessageProps = {
     message: Message;
@@ -30,6 +34,13 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
     // Add state for code block context menu
     const [activeCodeBlock, setActiveCodeBlock] = useState<{ content: string; language: string } | null>(null);
     const codeBlockRef = useRef<HTMLDivElement>(null);
+    // Add state for dataset detection
+    const [datasets, setDatasets] = useState<Array<{
+        content: string;
+        format: string;
+        filename: string;
+        mimeType: string;
+    }>>([]);
 
     const copyToClipboard = () => {
         navigator.clipboard
@@ -137,6 +148,182 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
         );
     };
 
+    // Define markdown components for consistent rendering
+    const markdownComponents: Components = {
+        h1: ({...props}: any) => <h1 className="text-xl font-bold my-3" {...props} />,
+        h2: ({...props}: any) => <h2 className="text-lg font-bold my-3" {...props} />,
+        h3: ({...props}: any) => <h3 className="text-md font-bold my-2" {...props} />,
+        h4: ({...props}: any) => <h4 className="text-base font-bold my-2" {...props} />,
+        h5: ({...props}: any) => <h5 className="text-sm font-bold my-1" {...props} />,
+        h6: ({...props}: any) => <h6 className="text-xs font-bold my-1" {...props} />,
+        p: ({...props}: any) => <p className="my-2 leading-relaxed" {...props} />,
+        ul: ({...props}: any) => <ul className="list-disc pl-5 my-3 space-y-1" {...props} />,
+        ol: ({...props}: any) => <ol className="list-decimal pl-5 my-3 space-y-1" {...props} />,
+        li: ({...props}: any) => <li className="my-1" {...props} />,
+        a: ({...props}: any) => <a className="text-blue-500 dark:text-blue-400 underline hover:text-blue-700 dark:hover:text-blue-300 transition-colors" {...props} />,
+        blockquote: ({...props}: any) => <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 py-1 my-3 text-gray-700 dark:text-gray-300 italic" {...props} />,
+        hr: ({...props}: any) => <hr className="my-4 border-gray-300 dark:border-gray-600" {...props} />,
+        table: ({...props}: any) => <div className="overflow-x-auto my-3"><table className="min-w-full divide-y divide-gray-300 dark:divide-gray-600 border border-gray-300 dark:border-gray-600 rounded" {...props} /></div>,
+        thead: ({...props}: any) => <thead className="bg-gray-100 dark:bg-gray-700" {...props} />,
+        tbody: ({...props}: any) => <tbody className="divide-y divide-gray-200 dark:divide-gray-700" {...props} />,
+        tr: ({...props}: any) => <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50" {...props} />,
+        th: ({...props}: any) => <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider" {...props} />,
+        td: ({...props}: any) => <td className="px-3 py-2 whitespace-nowrap text-sm" {...props} />,
+        code: ({ className, children, inline, ...props }: CodeProps) => {
+            const match = /language-(\w+)/.exec(className || '');
+            
+            if (match && (match[1] === 'latex' || match[1] === 'math' || match[1] === 'tex')) {
+                try {
+                    return <BlockMath math={String(children).replace(/\n$/, '')} />;
+                } catch (error) {
+                    console.error('Error rendering LaTeX in code block:', error);
+                    return <code className="bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>;
+                }
+            }
+            
+            const codeContent = String(children).replace(/\n$/, '');
+            const isDownloadable = match && isDownloadableCode(match[1], codeContent);
+            
+            return match ? (
+                <div 
+                    ref={codeBlockRef}
+                    className={`relative group ${isDownloadable ? 'code-block-downloadable' : ''}`}
+                    onContextMenu={() => {
+                        if (isDownloadable) {
+                            setActiveCodeBlock({
+                                content: codeContent,
+                                language: match[1]
+                            });
+                        }
+                    }}
+                >
+                    {/* Header bar with language and buttons */}
+                    <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 rounded-t-md text-xs text-gray-400">
+                        <span>{match[1]}</span>
+                        <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button 
+                                className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-700"
+                                onClick={() => navigator.clipboard.writeText(codeContent)}
+                                title="Copy code"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                </svg>
+                                Copy
+                            </button>
+                            
+                            {/* Add download button if the code is downloadable */}
+                            {isDownloadable && (
+                                <DownloadButton 
+                                    content={codeContent}
+                                    language={match[1]}
+                                    suggestedFilename={suggestFilename(codeContent, match[1])}
+                                    highlightAttention={codeContent.split('\n').length > 20}
+                                />
+                            )}
+                        </div>
+                    </div>
+
+                    <SyntaxHighlighter
+                        style={vscDarkPlus as any}
+                        language={match[1]}
+                        PreTag="div"
+                        className="rounded-b-md my-0 text-sm"
+                        showLineNumbers={true}
+                        {...props}
+                    >
+                        {codeContent}
+                    </SyntaxHighlighter>
+                </div>
+            ) : (
+                <code className="bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>
+            );
+        },
+        pre: ({children}: any) => <div className="overflow-hidden rounded-md my-3">{children}</div>,
+    };
+
+    // Process the message content to extract datasets
+    useEffect(() => {
+        // Look for dataset markers in the message
+        const datasetRegex = /```dataset-(?<format>[a-z]+)(?<options>\{.*?\})?\n(?<content>[\s\S]*?)```/g;
+        
+        // Reset datasets
+        setDatasets([]);
+        
+        // Get the message content
+        const messageContent = message.content;
+        if (!messageContent) return;
+        
+        console.log('Processing message for datasets, content length:', messageContent.length);
+        
+        // Find all dataset markers in the content
+        let match;
+        let matches = [];
+        
+        // Use a regex that captures the entire match
+        const regex = new RegExp(datasetRegex);
+        let content = messageContent;
+        
+        // First collect all matches
+        while ((match = regex.exec(content)) !== null) {
+            const { format, options, content: datasetContent } = match.groups || {};
+            
+            if (format && datasetContent) {
+                console.log(`Found dataset: format=${format}, content length=${datasetContent.length}`);
+                matches.push({
+                    format,
+                    options,
+                    content: datasetContent,
+                    fullMatch: match[0]
+                });
+            }
+        }
+        
+        // Process the matches
+        if (matches.length > 0) {
+            const extractedDatasets = matches.map(match => {
+                const { format, options, content: datasetContent } = match;
+                
+                let parsedOptions = {};
+                if (options) {
+                    try {
+                        parsedOptions = JSON.parse(options);
+                    } catch (e) {
+                        console.error('Failed to parse dataset options:', e);
+                    }
+                }
+
+                const formatInfo: Record<string, { extension: string; mimeType: string }> = {
+                    csv: { extension: 'csv', mimeType: 'text/csv' },
+                    json: { extension: 'json', mimeType: 'application/json' },
+                    xml: { extension: 'xml', mimeType: 'application/xml' },
+                    yaml: { extension: 'yaml', mimeType: 'text/yaml' },
+                    sql: { extension: 'sql', mimeType: 'text/plain' },
+                    txt: { extension: 'txt', mimeType: 'text/plain' },
+                    markdown: { extension: 'md', mimeType: 'text/markdown' },
+                    html: { extension: 'html', mimeType: 'text/html' },
+                    tsv: { extension: 'tsv', mimeType: 'text/tab-separated-values' },
+                };
+
+                const { extension, mimeType } = formatInfo[format] || formatInfo.txt;
+                const filename = (parsedOptions as any).name 
+                    ? `${(parsedOptions as any).name}.${extension}` 
+                    : `dataset.${extension}`;
+
+                return {
+                    content: datasetContent,
+                    format,
+                    filename,
+                    mimeType,
+                    fullMatch: match.fullMatch
+                };
+            });
+            
+            console.log('Extracted datasets:', extractedDatasets.length);
+            setDatasets(extractedDatasets);
+        }
+    }, [message.content]);
+
     // Process the message content to extract LaTeX blocks
     const processLatexContent = (content: string) => {
         // Check if content contains LaTeX delimiters
@@ -234,173 +421,98 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
 
     // Component to render the processed content
     const ProcessedContent = () => {
-        const processedContent = processLatexContent(message.content);
-
-        if (!processedContent.hasLatex) {
+        // If we have datasets, split the content by dataset markers and insert dataset components
+        if (datasets.length > 0) {
+            console.log('Rendering with datasets:', datasets.length);
+            
+            // Create a modified content by replacing dataset markers with placeholders
+            let processedContent = message.content;
+            
+            // Replace each dataset with a unique placeholder
+            datasets.forEach((dataset, index) => {
+                if (dataset.fullMatch) {
+                    processedContent = processedContent.replace(dataset.fullMatch, `[DATASET_${index}]`);
+                }
+            });
+            
+            // Split by placeholders and create an array of parts
+            const parts = [];
+            let lastIndex = 0;
+            
+            for (let i = 0; i < datasets.length; i++) {
+                const placeholder = `[DATASET_${i}]`;
+                const placeholderIndex = processedContent.indexOf(placeholder, lastIndex);
+                
+                if (placeholderIndex !== -1) {
+                    // Add text before the placeholder
+                    if (placeholderIndex > lastIndex) {
+                        parts.push({
+                            type: 'text',
+                            content: processedContent.substring(lastIndex, placeholderIndex)
+                        });
+                    }
+                    
+                    // Add the dataset
+                    parts.push({
+                        type: 'dataset',
+                        index: i
+                    });
+                    
+                    lastIndex = placeholderIndex + placeholder.length;
+                }
+            }
+            
+            // Add any remaining text
+            if (lastIndex < processedContent.length) {
+                parts.push({
+                    type: 'text',
+                    content: processedContent.substring(lastIndex)
+                });
+            }
+            
+            // Render the parts
             return (
-                <ReactMarkdown
-                    components={{
-                        h1: ({...props}: any) => <h1 className="text-xl font-bold my-3" {...props} />,
-                        h2: ({...props}: any) => <h2 className="text-lg font-bold my-3" {...props} />,
-                        h3: ({...props}: any) => <h3 className="text-md font-bold my-2" {...props} />,
-                        h4: ({...props}: any) => <h4 className="text-base font-bold my-2" {...props} />,
-                        h5: ({...props}: any) => <h5 className="text-sm font-bold my-1" {...props} />,
-                        h6: ({...props}: any) => <h6 className="text-xs font-bold my-1" {...props} />,
-                        p: ({...props}: any) => <p className="my-2 leading-relaxed" {...props} />,
-                        ul: ({...props}: any) => <ul className="list-disc pl-5 my-3 space-y-1" {...props} />,
-                        ol: ({...props}: any) => <ol className="list-decimal pl-5 my-3 space-y-1" {...props} />,
-                        li: ({...props}: any) => <li className="my-1" {...props} />,
-                        a: ({...props}: any) => <a className="text-blue-500 dark:text-blue-400 underline hover:text-blue-700 dark:hover:text-blue-300 transition-colors" {...props} />,
-                        blockquote: ({...props}: any) => <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 py-1 my-3 text-gray-700 dark:text-gray-300 italic" {...props} />,
-                        hr: ({...props}: any) => <hr className="my-4 border-gray-300 dark:border-gray-600" {...props} />,
-                        table: ({...props}: any) => <div className="overflow-x-auto my-3"><table className="min-w-full divide-y divide-gray-300 dark:divide-gray-600 border border-gray-300 dark:border-gray-600 rounded" {...props} /></div>,
-                        thead: ({...props}: any) => <thead className="bg-gray-100 dark:bg-gray-700" {...props} />,
-                        tbody: ({...props}: any) => <tbody className="divide-y divide-gray-200 dark:divide-gray-700" {...props} />,
-                        tr: ({...props}: any) => <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50" {...props} />,
-                        th: ({...props}: any) => <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider" {...props} />,
-                        td: ({...props}: any) => <td className="px-3 py-2 whitespace-nowrap text-sm" {...props} />,
-                        code: ({ className, children, inline, ...props }: CodeProps) => {
-                            const match = /language-(\w+)/.exec(className || '');
-                            
-                            if (match && (match[1] === 'latex' || match[1] === 'math' || match[1] === 'tex')) {
-                                try {
-                                    return <BlockMath math={String(children).replace(/\n$/, '')} />;
-                                } catch (error) {
-                                    console.error('Error rendering LaTeX in code block:', error);
-                                    return <code className="bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>;
-                                }
-                            }
-                            
-                            const codeContent = String(children).replace(/\n$/, '');
-                            const isDownloadable = match && isDownloadableCode(match[1], codeContent);
-                            
-                            return match ? (
-                                <div 
-                                    ref={codeBlockRef}
-                                    className={`relative group ${isDownloadable ? 'code-block-downloadable' : ''}`}
-                                    onContextMenu={() => {
-                                        if (isDownloadable) {
-                                            setActiveCodeBlock({
-                                                content: codeContent,
-                                                language: match[1]
-                                            });
-                                        }
-                                    }}
-                                >
-                                    {/* Header bar with language and buttons */}
-                                    <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 rounded-t-md text-xs text-gray-400">
-                                        <span>{match[1]}</span>
-                                        <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button 
-                                                className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-700"
-                                                onClick={() => navigator.clipboard.writeText(codeContent)}
-                                                title="Copy code"
-                                            >
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2" />
-                                                </svg>
-                                                Copy
-                                            </button>
-                                            
-                                            {/* Add download button if the code is downloadable */}
-                                            {isDownloadable && (
-                                                <DownloadButton 
-                                                    content={codeContent}
-                                                    language={match[1]}
-                                                    suggestedFilename={suggestFilename(codeContent, match[1])}
-                                                    highlightAttention={codeContent.split('\n').length > 20}
-                                                />
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <SyntaxHighlighter
-                                        style={vscDarkPlus as any}
-                                        language={match[1]}
-                                        PreTag="div"
-                                        className="rounded-b-md my-0 text-sm"
-                                        showLineNumbers={true}
-                                        {...props}
+                <>
+                    {parts.map((part, index) => {
+                        if (part.type === 'text') {
+                            return part.content.trim() ? (
+                                <div key={`text-${index}`}>
+                                    <ReactMarkdown
+                                        components={markdownComponents}
+                                        remarkPlugins={[remarkMath, remarkGfm]}
+                                        rehypePlugins={[rehypeKatex]}
                                     >
-                                        {codeContent}
-                                    </SyntaxHighlighter>
+                                        {part.content}
+                                    </ReactMarkdown>
                                 </div>
-                            ) : (
-                                <code className="bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>
+                            ) : null;
+                        } else if (part.type === 'dataset') {
+                            const dataset = datasets[part.index];
+                            return (
+                                <DatasetPreview
+                                    key={`dataset-${part.index}`}
+                                    content={dataset.content}
+                                    format={dataset.format}
+                                    filename={dataset.filename}
+                                    mimeType={dataset.mimeType}
+                                />
                             );
-                        },
-                        pre: ({children}: any) => <div className="overflow-hidden rounded-md my-3">{children}</div>,
-                    } as Components}
-                >
-                    {message.content}
-                </ReactMarkdown>
+                        }
+                        return null;
+                    })}
+                </>
             );
         }
-
+        
+        // If no datasets, render the content normally
         return (
-            <div className="space-y-3">
-                {processedContent.processedLines?.map((line, index) => {
-                    if (line.type === 'latex') {
-                        try {
-                            return line.mode === 'inline' ? (
-                                <div key={index} className="py-1">
-                                    <InlineMath math={line.content} />
-                                </div>
-                            ) : (
-                                <div key={index} className="py-2">
-                                    <BlockMath math={line.content} />
-                                </div>
-                            );
-                        } catch (error) {
-                            console.error('Error rendering LaTeX:', error);
-                            return (
-                                <code key={index} className="block bg-red-100 dark:bg-red-900/30 p-2 rounded text-sm font-mono my-2">
-                                    {line.mode === 'block' ? '\\[' : '\\('}{line.content}{line.mode === 'block' ? '\\]' : '\\)'}
-                                </code>
-                            );
-                        }
-                    } else if (line.type === 'heading') {
-                        // Render appropriate heading based on level
-                        const headingLevel = Math.min(line.level || 3, 6);
-                        
-                        switch (headingLevel) {
-                            case 1:
-                                return <h1 key={index} className="text-2xl font-bold my-4">{line.content}</h1>;
-                            case 2:
-                                return <h2 key={index} className="text-xl font-bold my-3">{line.content}</h2>;
-                            case 3:
-                                return <h3 key={index} className="text-lg font-bold my-3">{line.content}</h3>;
-                            case 4:
-                                return <h4 key={index} className="text-base font-bold my-2">{line.content}</h4>;
-                            case 5:
-                                return <h5 key={index} className="text-sm font-bold my-1">{line.content}</h5>;
-                            case 6:
-                                return <h6 key={index} className="text-xs font-bold my-1">{line.content}</h6>;
-                            default:
-                                return <h3 key={index} className="text-lg font-bold my-3">{line.content}</h3>;
-                        }
-                    } else if (line.type === 'listHeading') {
-                        // Process list items with headings (like "1. **Calculus**:")
-                        const match = line.content.match(/^(\d+)\.\s+\*\*(.+?)\*\*:(.*)/);
-                        if (match) {
-                            const [, number, heading, remainingText] = match;
-                            return (
-                                <div key={index} className="flex">
-                                    <span className="font-medium mr-2">{number}.</span>
-                                    <div>
-                                        <strong>{heading}:</strong>
-                                        {remainingText}
-                                    </div>
-                                </div>
-                            );
-                        }
-                        return <div key={index}>{line.content}</div>;
-                    } else {
-                        // Regular text line
-                        return line.content.trim() ? <div key={index}>{line.content}</div> : <div key={index} className="h-4"></div>;
-                    }
-                })}
-            </div>
+            <ReactMarkdown
+                components={markdownComponents}
+                remarkPlugins={[remarkMath, remarkGfm]}
+                rehypePlugins={[rehypeKatex]}
+            >
+                {message.content}
+            </ReactMarkdown>
         );
     };
 

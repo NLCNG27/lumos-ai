@@ -116,3 +116,22 @@ body {
 .code-block-downloadable:hover .download-button {
   opacity: 1;
 }
+
+/* Custom spreadsheet styles */
+.bg-gray-750 {
+  background-color: #2d3748; /* A shade between gray-700 and gray-800 */
+}
+
+.bg-gray-850 {
+  background-color: #1a202c; /* A shade between gray-800 and gray-900 */
+}
+
+/* Spreadsheet cell hover effect */
+.spreadsheet-cell:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Spreadsheet row hover effect */
+.spreadsheet-row:hover .spreadsheet-cell {
+  background-color: rgba(255, 255, 255, 0.03);
+}

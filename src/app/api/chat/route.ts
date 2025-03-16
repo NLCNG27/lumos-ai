@@ -25,6 +25,12 @@ import {
     extractPdfStructure,
 } from "@/app/lib/simplePdfExtractor";
 
+// Import the dataset generator
+import { generateRandomDataset } from "@/app/lib/datasetGenerator";
+
+// Import the conversation service for saving messages
+import { saveMessageToConversation } from "@/app/lib/conversation-service";
+
 // Add a simple in-memory cache for OpenAI responses
 const CACHE_TTL = 1000 * 60 * 60; // 1 hour in milliseconds
 type CacheEntry = {
@@ -1005,6 +1011,86 @@ export async function POST(req: Request) {
 
                 // Update the message
                 formattedMessages[lastUserMessageIndex].content = userContent;
+            }
+        }
+
+        // Process the user's message to detect dataset generation requests
+        const userMessage = messages[messages.length - 1];
+        if (userMessage.role === 'user') {
+            // Define types for message content items
+            type ContentItem = {
+                type: string;
+                text?: string;
+                image_url?: { url: string };
+            };
+            
+            const content = typeof userMessage.content === 'string' 
+                ? userMessage.content 
+                : Array.isArray(userMessage.content) 
+                    ? userMessage.content.filter((item: ContentItem) => item.type === 'text').map((item: ContentItem) => item.text || '').join(' ')
+                    : '';
+
+            // Check for dataset generation requests
+            const datasetRegex = /generate\s+(?:a|an)\s+(?<rows>\d+)?\s*(?:row)?\s*(?<format>\w+)?\s*(?:dataset|data\s*set)/i;
+            const match = content.match(datasetRegex);
+
+            if (match) {
+                // Extract parameters from the request
+                const format = match.groups?.format || 'csv';
+                const rows = parseInt(match.groups?.rows || '10', 10);
+
+                // Extract schema information if provided
+                const schemaRegex = /with\s+(?:columns|fields)\s+(?<schema>.*?)(?:$|in\s+|format\s+|with\s+)/i;
+                const schemaMatch = content.match(schemaRegex);
+                
+                let schema: Record<string, string> = {};
+                if (schemaMatch && schemaMatch.groups?.schema) {
+                    // Parse the schema from the message
+                    const schemaText = schemaMatch.groups.schema;
+                    const columnRegex = /(\w+)\s+(?:as\s+)?(\w+)/g;
+                    let columnMatch;
+                    
+                    while ((columnMatch = columnRegex.exec(schemaText)) !== null) {
+                        const [_, columnName, columnType] = columnMatch;
+                        schema[columnName] = columnType;
+                    }
+                }
+
+                // If no schema was provided or parsed, use default schema
+                if (Object.keys(schema).length === 0) {
+                    schema = {
+                        id: 'integer',
+                        name: 'string',
+                        value: 'float'
+                    };
+                }
+
+                // Generate the dataset
+                const dataset = generateRandomDataset({
+                    rows,
+                    format,
+                    schema,
+                    name: `${format}_dataset`,
+                    includeHeaders: true
+                });
+
+                console.log(`Generated ${format} dataset with ${rows} rows`);
+
+                // Create a response with the dataset in the proper format
+                const responseContent = `I've generated a ${rows}-row ${format.toUpperCase()} dataset for you. Here it is:
+
+\`\`\`dataset-${format}
+${dataset.content}
+\`\`\`
+
+You can download this file using the download button above.`;
+
+                // Return the response directly
+                return new Response(responseContent, {
+                    headers: {
+                        'Content-Type': 'text/plain'
+                    }
+                });
             }
         }
 
