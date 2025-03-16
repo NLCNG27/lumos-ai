@@ -51,7 +51,14 @@ export default function ChatInput({
                 // Create preview URLs for images
                 let previewUrl;
                 if (file.type.startsWith("image/")) {
-                    previewUrl = URL.createObjectURL(file);
+                    // Convert image to base64 data URL instead of using createObjectURL
+                    previewUrl = await new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                            resolve(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                    });
                 }
 
                 return {
@@ -70,11 +77,7 @@ export default function ChatInput({
     const handleRemoveFile = (id: string) => {
         setUploadedFiles((prev) => {
             const updatedFiles = prev.filter((file) => file.id !== id);
-            // Clean up any object URLs to prevent memory leaks
-            const fileToRemove = prev.find((file) => file.id === id);
-            if (fileToRemove?.previewUrl) {
-                URL.revokeObjectURL(fileToRemove.previewUrl);
-            }
+            // No need to revoke object URLs anymore since we're using base64
             return updatedFiles;
         });
     };
@@ -124,14 +127,11 @@ export default function ChatInput({
         }
     }, [isLoading]); // Re-add listener if isLoading changes
 
-    // Clean up object URLs when component unmounts
+    // No need to clean up object URLs when component unmounts
+    // since we're using base64 data URLs now
     useEffect(() => {
         return () => {
-            uploadedFiles.forEach((file) => {
-                if (file.previewUrl) {
-                    URL.revokeObjectURL(file.previewUrl);
-                }
-            });
+            // Cleanup function is now empty
         };
     }, []);
 
