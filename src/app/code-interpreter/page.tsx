@@ -7,6 +7,7 @@ import rehypeKatex from "rehype-katex";
 import remarkMath from "remark-math";
 import remarkGfm from "remark-gfm";
 import CodeBlock from "../components/ui/CodeBlock";
+import LoadingDots from "../components/ui/LoadingDots";
 import Image from "next/image";
 
 // Helper function to extract code blocks from markdown
@@ -192,7 +193,7 @@ export default function CodeInterpreterTest() {
 
         {response.loading && (
           <div className="flex justify-center my-8">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            <LoadingDots size="large" />
           </div>
         )}
 

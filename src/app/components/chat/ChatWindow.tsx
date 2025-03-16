@@ -3,6 +3,7 @@ import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import { useChat } from "@/app/hooks/useChat";
 import Link from "next/link";
+import LoadingDots from "../ui/LoadingDots";
 
 interface ChatWindowProps {
   initialConversationId?: string;
@@ -75,9 +76,8 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
                 )}
 
                 {isLoading && (
-                    <div className="flex items-center text-gray-400 p-3 animate-fadeIn">
-                        <div className="dot-flashing mr-3"></div>
-                        <p>Lumos is thinking...</p>
+                    <div className="flex items-center justify-start p-3 animate-fadeIn">
+                        <LoadingDots size="medium" />
                     </div>
                 )}
 
