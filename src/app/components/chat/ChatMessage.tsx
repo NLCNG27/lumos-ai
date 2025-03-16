@@ -1,12 +1,15 @@
 import { Message, ProcessedFile } from "@/app/types";
 import ReactMarkdown from "react-markdown";
-import { useState, memo } from "react";
+import { useState, memo, useRef } from "react";
 import Image from "next/image";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import type { Components } from 'react-markdown';
 import 'katex/dist/katex.min.css';
 import { InlineMath, BlockMath } from 'react-katex';
+import DownloadButton from '../ui/DownloadButton';
+import CodeBlockMenu from '../ui/CodeBlockMenu';
+import { isDownloadableCode, suggestFilename } from '@/app/lib/fileUtils';
 
 type ChatMessageProps = {
     message: Message;
@@ -24,6 +27,9 @@ interface CodeProps extends React.HTMLAttributes<HTMLElement> {
 const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
     const isUser = message.role === "user";
     const [isCopied, setIsCopied] = useState(false);
+    // Add state for code block context menu
+    const [activeCodeBlock, setActiveCodeBlock] = useState<{ content: string; language: string } | null>(null);
+    const codeBlockRef = useRef<HTMLDivElement>(null);
 
     const copyToClipboard = () => {
         navigator.clipboard
@@ -265,25 +271,58 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                                 }
                             }
                             
+                            const codeContent = String(children).replace(/\n$/, '');
+                            const isDownloadable = match && isDownloadableCode(match[1], codeContent);
+                            
                             return match ? (
-                                <div className="relative group">
-                                    <div className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button 
-                                            className="bg-gray-200 dark:bg-gray-700 rounded-md p-1 text-xs hover:bg-gray-300 dark:hover:bg-gray-600"
-                                            onClick={() => navigator.clipboard.writeText(String(children).replace(/\n$/, ''))}
-                                        >
-                                            Copy
-                                        </button>
+                                <div 
+                                    ref={codeBlockRef}
+                                    className={`relative group ${isDownloadable ? 'code-block-downloadable' : ''}`}
+                                    onContextMenu={() => {
+                                        if (isDownloadable) {
+                                            setActiveCodeBlock({
+                                                content: codeContent,
+                                                language: match[1]
+                                            });
+                                        }
+                                    }}
+                                >
+                                    {/* Header bar with language and buttons */}
+                                    <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 rounded-t-md text-xs text-gray-400">
+                                        <span>{match[1]}</span>
+                                        <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button 
+                                                className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-700"
+                                                onClick={() => navigator.clipboard.writeText(codeContent)}
+                                                title="Copy code"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                                </svg>
+                                                Copy
+                                            </button>
+                                            
+                                            {/* Add download button if the code is downloadable */}
+                                            {isDownloadable && (
+                                                <DownloadButton 
+                                                    content={codeContent}
+                                                    language={match[1]}
+                                                    suggestedFilename={suggestFilename(codeContent, match[1])}
+                                                    highlightAttention={codeContent.split('\n').length > 20}
+                                                />
+                                            )}
+                                        </div>
                                     </div>
+
                                     <SyntaxHighlighter
                                         style={vscDarkPlus as any}
                                         language={match[1]}
                                         PreTag="div"
-                                        className="rounded-md my-3 text-sm"
+                                        className="rounded-b-md my-0 text-sm"
                                         showLineNumbers={true}
                                         {...props}
                                     >
-                                        {String(children).replace(/\n$/, '')}
+                                        {codeContent}
                                     </SyntaxHighlighter>
                                 </div>
                             ) : (
@@ -388,30 +427,30 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                         title="Copy to clipboard"
                     >
                         <div className="bg-gray-200 dark:bg-gray-700 rounded-full p-1.5 shadow-lg">
-                            {isCopied ? (
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="h-4 w-4 text-green-500"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                >
-                                    <path
-                                        fillRule="evenodd"
-                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                        clipRule="evenodd"
-                                    />
-                                </svg>
-                            ) : (
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="h-4 w-4 text-gray-500 dark:text-gray-300"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                >
-                                    <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
-                                    <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
-                                </svg>
-                            )}
+                        {isCopied ? (
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                   className="h-4 w-4 text-green-500"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                            >
+                                <path
+                                    fillRule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clipRule="evenodd"
+                                />
+                            </svg>
+                        ) : (
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                   className="h-4 w-4 text-gray-500 dark:text-gray-300"
+                                   viewBox="0 0 20 20"
+                                   fill="currentColor"
+                            >
+                                   <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+                                   <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+                            </svg>
+                        )}
                         </div>
                     </button>
                 )}
@@ -419,6 +458,15 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                 <div className={`text-sm markdown-content ${!isUser ? "prose prose-sm dark:prose-invert max-w-none" : ""}`}>
                     <ProcessedContent />
                 </div>
+                
+                {/* Add the context menu for code blocks */}
+                {activeCodeBlock && (
+                    <CodeBlockMenu
+                        codeBlockRef={codeBlockRef}
+                        content={activeCodeBlock.content}
+                        language={activeCodeBlock.language}
+                    />
+                )}
             </div>
             {/* {isUser && (
                 <div className="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center flex-shrink-0 mt-1">

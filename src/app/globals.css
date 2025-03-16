@@ -89,3 +89,30 @@ body {
   font-style: italic;
   color: #9ca3af;
 }
+
+/* Update animation for download button to be more subtle */
+@keyframes pulse-attention {
+  0% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 1;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+  }
+  100% {
+    opacity: 0.9;
+  }
+}
+
+.animate-attention {
+  animation: pulse-attention 1.5s ease-in-out 2;
+}
+
+/* Make the download button visible with subtle styling for longer code blocks */
+.code-block-downloadable .download-button {
+  opacity: 0.8;
+}
+
+.code-block-downloadable:hover .download-button {
+  opacity: 1;
+}
