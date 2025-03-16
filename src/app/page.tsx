@@ -6,6 +6,7 @@ import Image from "next/image";
 import { SignedIn, SignedOut, UserButton, SignInButton, SignUpButton } from "@clerk/nextjs";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 // Component that uses useSearchParams
 function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
@@ -85,7 +86,7 @@ export default function Home() {
         <div className="min-h-screen bg-gray-50 dark:bg-black">
             <header className="w-full bg-black border-b border-gray-800 px-4 py-2">
                 <div className="flex justify-between items-center">
-                    <div className="flex items-center">
+                    <div className="flex items-center space-x-6">
                         <Image
                             src="/logo.png"
                             alt="Lumos AI"
@@ -94,6 +95,12 @@ export default function Home() {
                             priority
                             className="ml-0"
                         />
+                        <Link 
+                            href="/code-interpreter" 
+                            className="text-sm font-medium text-white hover:text-blue-400 transition-colors duration-200"
+                        >
+                            Code Interpreter Test
+                        </Link>
                     </div>
 
                     <div className="flex items-center gap-4">
