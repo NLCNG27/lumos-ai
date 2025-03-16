@@ -40,6 +40,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
         format: string;
         filename: string;
         mimeType: string;
+        fullMatch?: string;
     }>>([]);
 
     const copyToClipboard = () => {
@@ -419,6 +420,11 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
         return { hasLatex: true, processedLines };
     };
 
+    // Define types for the parts array
+    type ContentPart = 
+        | { type: 'text'; content: string }
+        | { type: 'dataset'; index: number };
+
     // Component to render the processed content
     const ProcessedContent = () => {
         // If we have datasets, split the content by dataset markers and insert dataset components
@@ -436,7 +442,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
             });
             
             // Split by placeholders and create an array of parts
-            const parts = [];
+            const parts: ContentPart[] = [];
             let lastIndex = 0;
             
             for (let i = 0; i < datasets.length; i++) {
@@ -475,7 +481,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                 <>
                     {parts.map((part, index) => {
                         if (part.type === 'text') {
-                            return part.content.trim() ? (
+                            return part.content?.trim() ? (
                                 <div key={`text-${index}`}>
                                     <ReactMarkdown
                                         components={markdownComponents}
