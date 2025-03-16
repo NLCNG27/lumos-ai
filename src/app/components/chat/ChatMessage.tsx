@@ -151,25 +151,25 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
 
     // Define markdown components for consistent rendering
     const markdownComponents: Components = {
-        h1: ({...props}: any) => <h1 className="text-xl font-bold my-3" {...props} />,
-        h2: ({...props}: any) => <h2 className="text-lg font-bold my-3" {...props} />,
-        h3: ({...props}: any) => <h3 className="text-md font-bold my-2" {...props} />,
+        h1: ({...props}: any) => <h1 className="text-2xl font-bold my-3" {...props} />,
+        h2: ({...props}: any) => <h2 className="text-xl font-bold my-3" {...props} />,
+        h3: ({...props}: any) => <h3 className="text-lg font-bold my-2" {...props} />,
         h4: ({...props}: any) => <h4 className="text-base font-bold my-2" {...props} />,
         h5: ({...props}: any) => <h5 className="text-sm font-bold my-1" {...props} />,
         h6: ({...props}: any) => <h6 className="text-xs font-bold my-1" {...props} />,
-        p: ({...props}: any) => <p className="my-2 leading-relaxed" {...props} />,
-        ul: ({...props}: any) => <ul className="list-disc pl-5 my-3 space-y-1" {...props} />,
-        ol: ({...props}: any) => <ol className="list-decimal pl-5 my-3 space-y-1" {...props} />,
-        li: ({...props}: any) => <li className="my-1" {...props} />,
-        a: ({...props}: any) => <a className="text-blue-500 dark:text-blue-400 underline hover:text-blue-700 dark:hover:text-blue-300 transition-colors" {...props} />,
-        blockquote: ({...props}: any) => <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 py-1 my-3 text-gray-700 dark:text-gray-300 italic" {...props} />,
+        p: ({...props}: any) => <p className="my-2 leading-relaxed text-base" {...props} />,
+        ul: ({...props}: any) => <ul className="list-disc pl-5 my-3 space-y-1 text-base" {...props} />,
+        ol: ({...props}: any) => <ol className="list-decimal pl-5 my-3 space-y-1 text-base" {...props} />,
+        li: ({...props}: any) => <li className="my-1 text-base" {...props} />,
+        a: ({...props}: any) => <a className="text-blue-500 dark:text-blue-400 underline hover:text-blue-700 dark:hover:text-blue-300 transition-colors text-base" {...props} />,
+        blockquote: ({...props}: any) => <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 py-1 my-3 text-gray-700 dark:text-gray-300 italic text-base" {...props} />,
         hr: ({...props}: any) => <hr className="my-4 border-gray-300 dark:border-gray-600" {...props} />,
-        table: ({...props}: any) => <div className="overflow-x-auto my-3"><table className="min-w-full divide-y divide-gray-300 dark:divide-gray-600 border border-gray-300 dark:border-gray-600 rounded" {...props} /></div>,
+        table: ({...props}: any) => <div className="overflow-x-auto my-3"><table className="min-w-full divide-y divide-gray-300 dark:divide-gray-600 border border-gray-300 dark:border-gray-600 rounded text-base" {...props} /></div>,
         thead: ({...props}: any) => <thead className="bg-gray-100 dark:bg-gray-700" {...props} />,
         tbody: ({...props}: any) => <tbody className="divide-y divide-gray-200 dark:divide-gray-700" {...props} />,
         tr: ({...props}: any) => <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50" {...props} />,
-        th: ({...props}: any) => <th className="px-3 py-2 text-left text-xs font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider" {...props} />,
-        td: ({...props}: any) => <td className="px-3 py-2 whitespace-nowrap text-sm" {...props} />,
+        th: ({...props}: any) => <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider" {...props} />,
+        td: ({...props}: any) => <td className="px-3 py-2 whitespace-nowrap text-base" {...props} />,
         code: ({ className, children, inline, ...props }: CodeProps) => {
             const match = /language-(\w+)/.exec(className || '');
             
@@ -178,7 +178,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                     return <BlockMath math={String(children).replace(/\n$/, '')} />;
                 } catch (error) {
                     console.error('Error rendering LaTeX in code block:', error);
-                    return <code className="bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>;
+                    return <code className="bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-base font-mono" {...props}>{children}</code>;
                 }
             }
             
@@ -229,7 +229,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                         style={vscDarkPlus as any}
                         language={match[1]}
                         PreTag="div"
-                        className="rounded-b-md my-0 text-sm"
+                        className="rounded-b-md my-0 text-base"
                         showLineNumbers={true}
                         {...props}
                     >
@@ -237,7 +237,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                     </SyntaxHighlighter>
                 </div>
             ) : (
-                <code className="bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>
+                <code className="bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-base font-mono" {...props}>{children}</code>
             );
         },
         pre: ({children}: any) => <div className="overflow-hidden rounded-md my-3">{children}</div>,
@@ -573,7 +573,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                     </button>
                 )}
                 {isUser && renderUploadedFiles()}
-                <div className={`text-sm markdown-content ${!isUser ? "prose prose-sm dark:prose-invert max-w-none" : ""}`}>
+                <div className={`text-base markdown-content ${!isUser ? "prose prose-base dark:prose-invert max-w-none" : ""}`}>
                     <ProcessedContent />
                 </div>
                 
