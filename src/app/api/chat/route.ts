@@ -287,7 +287,7 @@ type TextContent = {
 // Define our message format to avoid TypeScript errors
 interface Message {
     role: "system" | "user" | "assistant";
-    content: string | any[];
+    content: string | Array<TextContent | ImageContent>;
 }
 
 export async function POST(req: Request) {
@@ -399,31 +399,37 @@ export async function POST(req: Request) {
         }
 
         // Create a system message that includes file content information
-        let systemMessage = DEFAULT_SYSTEM_MESSAGE;
+        let systemMessage: Message = {
+            role: "system",
+            content: 'You are Lumos, a helpful AI assistant that can analyze various types of files including documents, images, and data. ' +
+            'When providing mathematical expressions, use LaTeX notation surrounded by $ for inline math or $$ for block math. ' +
+            'For example, use $\\frac{x^2 + 1}{2}$ for inline math and $$\\int_{a}^{b} f(x) dx$$ for displayed equations. ' +
+            'Make sure to properly format all mathematical expressions to ensure they render correctly.'
+        };
 
         if (files && files.length > 0) {
             if (hasUnprocessableFiles) {
-                systemMessage += `\n\nThe user has uploaded some complex files. Do your best to analyze them with the provided information.`;
+                systemMessage.content += `\n\nThe user has uploaded some complex files. Do your best to analyze them with the provided information.`;
             }
 
             if (fileContents) {
-                systemMessage += `\n\nThe user has uploaded the following files. Here's the content of these files: \n${fileContents}\n\nPlease help the user analyze and understand these files. Answer their questions based on the content.`;
+                systemMessage.content += `\n\nThe user has uploaded the following files. Here's the content of these files: \n${fileContents}\n\nPlease help the user analyze and understand these files. Answer their questions based on the content.`;
             }
 
             // Add RAG retrieved content if available
             if (documentContext) {
-                systemMessage += `\n\nThe following specific information is retrieved from the user's documents based on their query:\n\n${documentContext}\n\nYour answer should prioritize this retrieved information.`;
+                systemMessage.content += `\n\nThe following specific information is retrieved from the user's documents based on their query:\n\n${documentContext}\n\nYour answer should prioritize this retrieved information.`;
             }
 
             // Log the first 500 characters of the system message to check if file contents are included
             console.log(
                 "System message preview (first 500 chars):",
-                systemMessage.substring(0, 500)
+                (systemMessage.content as string).substring(0, 500)
             );
-            console.log("System message length:", systemMessage.length);
+            console.log("System message length:", (systemMessage.content as string).length);
 
             // Check if the system message contains Java code markers
-            const containsJavaCode = systemMessage.includes("```java");
+            const containsJavaCode = (systemMessage.content as string).includes("```java");
             console.log(
                 "System message contains Java code blocks:",
                 containsJavaCode
@@ -431,7 +437,7 @@ export async function POST(req: Request) {
 
             // Add specific instructions for Java files
             if (containsJavaCode) {
-                systemMessage += `\n\nIMPORTANT: The uploaded files include Java code. You should analyze this code by explaining:
+                systemMessage.content += `\n\nIMPORTANT: The uploaded files include Java code. You should analyze this code by explaining:
 1. The classes and their relationships
 2. The methods and their purposes
 3. The functionality of the code
@@ -440,10 +446,10 @@ export async function POST(req: Request) {
 
             // Check if the system message contains C++ code markers
             const containsCppCode =
-                systemMessage.includes("```cpp") ||
-                systemMessage.includes("```c") ||
-                systemMessage.includes("```h") ||
-                systemMessage.includes("```hpp");
+                (systemMessage.content as string).includes("```cpp") ||
+                (systemMessage.content as string).includes("```c") ||
+                (systemMessage.content as string).includes("```h") ||
+                (systemMessage.content as string).includes("```hpp");
             console.log(
                 "System message contains C++ code blocks:",
                 containsCppCode
@@ -451,7 +457,7 @@ export async function POST(req: Request) {
 
             // Add specific instructions for C++ files
             if (containsCppCode) {
-                systemMessage += `\n\nIMPORTANT: The uploaded files include C++ code. You should analyze this code by explaining:
+                systemMessage.content += `\n\nIMPORTANT: The uploaded files include C++ code. You should analyze this code by explaining:
 1. The functions, classes, and their relationships
 2. The purpose of each component
 3. The overall functionality of the code
@@ -462,8 +468,8 @@ export async function POST(req: Request) {
 
             // Check if the system message contains Python code markers
             const containsPythonCode =
-                systemMessage.includes("```python") ||
-                systemMessage.includes("```py");
+                (systemMessage.content as string).includes("```python") ||
+                (systemMessage.content as string).includes("```py");
             console.log(
                 "System message contains Python code blocks:",
                 containsPythonCode
@@ -471,7 +477,7 @@ export async function POST(req: Request) {
 
             // Add specific instructions for Python files
             if (containsPythonCode) {
-                systemMessage += `\n\nIMPORTANT: The uploaded files include Python code. You should analyze this code by explaining:
+                systemMessage.content += `\n\nIMPORTANT: The uploaded files include Python code. You should analyze this code by explaining:
 1. The functions, classes, and their relationships
 2. The purpose of each component
 3. The overall functionality of the code
@@ -481,10 +487,10 @@ export async function POST(req: Request) {
 
             // Check if the system message contains JavaScript/TypeScript code markers
             const containsJsCode =
-                systemMessage.includes("```js") ||
-                systemMessage.includes("```jsx") ||
-                systemMessage.includes("```ts") ||
-                systemMessage.includes("```tsx");
+                (systemMessage.content as string).includes("```js") ||
+                (systemMessage.content as string).includes("```jsx") ||
+                (systemMessage.content as string).includes("```ts") ||
+                (systemMessage.content as string).includes("```tsx");
             console.log(
                 "System message contains JavaScript/TypeScript code blocks:",
                 containsJsCode
@@ -492,7 +498,7 @@ export async function POST(req: Request) {
 
             // Add specific instructions for JavaScript/TypeScript files
             if (containsJsCode) {
-                systemMessage += `\n\nIMPORTANT: The uploaded files include JavaScript/TypeScript code. You should analyze this code by explaining:
+                systemMessage.content += `\n\nIMPORTANT: The uploaded files include JavaScript/TypeScript code. You should analyze this code by explaining:
 1. The functions, objects, and their relationships
 2. Any frameworks or libraries being used
 3. The overall functionality of the code
@@ -503,7 +509,7 @@ export async function POST(req: Request) {
 
             // Check for other programming languages using regex
             const codeBlockRegex = /```([a-zA-Z0-9]+)\n/g;
-            const matches = [...systemMessage.matchAll(codeBlockRegex)];
+            const matches = [...(systemMessage.content as string).matchAll(codeBlockRegex)];
             const languagesFound = matches
                 .map((match) => match[1])
                 .filter(
@@ -534,7 +540,7 @@ export async function POST(req: Request) {
                         : ext
                 );
 
-                systemMessage += `\n\nIMPORTANT: The uploaded files include code in the following languages: ${friendlyNames.join(
+                systemMessage.content += `\n\nIMPORTANT: The uploaded files include code in the following languages: ${friendlyNames.join(
                     ", "
                 )}. For each language, please:
 1. Identify the main components and their relationships
@@ -545,10 +551,10 @@ export async function POST(req: Request) {
             }
 
             // Check if the system message is too long
-            if (systemMessage.length > 100000) {
+            if ((systemMessage.content as string).length > 100000) {
                 console.log(
                     "Warning: System message is very long:",
-                    systemMessage.length,
+                    (systemMessage.content as string).length,
                     "characters"
                 );
             }
@@ -556,7 +562,7 @@ export async function POST(req: Request) {
 
         // Format messages for API
         const formattedMessages: Message[] = [
-            { role: "system", content: systemMessage },
+            systemMessage,
         ];
 
         // For code files, add an explicit assistant message showing the file content
@@ -751,7 +757,7 @@ export async function POST(req: Request) {
                     // If no cache hit, make the API call
                     const response = await openai.chat.completions.create({
                         model: "gpt-4o", // Using a model capable of processing images
-                        messages: formattedMessages as any,
+                        messages: formattedMessages as any, // Type assertion
                         temperature: 0.7,
                         max_tokens: 1500,
                     });
@@ -797,7 +803,7 @@ export async function POST(req: Request) {
                     const fallbackResponse =
                         await openai.chat.completions.create({
                             model: "gpt-4o-mini",
-                            messages: fallbackMessages as any,
+                            messages: fallbackMessages as any, // Type assertion
                             temperature: 0.7,
                             max_tokens: 1500,
                         });
@@ -822,7 +828,7 @@ export async function POST(req: Request) {
                 // If we only have PDFs, use the standard text model
                 const response = await openai.chat.completions.create({
                     model: "gpt-4o-mini",
-                    messages: formattedMessages as any,
+                    messages: formattedMessages as any, // Type assertion
                     temperature: 0.7,
                     max_tokens: 1500,
                 });
@@ -867,7 +873,7 @@ export async function POST(req: Request) {
             // Standard text processing
             const response = await openai.chat.completions.create({
                 model: "gpt-4o-mini",
-                messages: formattedMessages as any,
+                messages: formattedMessages as any, // Type assertion
                 temperature: 0.7,
                 max_tokens: 1500,
             });
@@ -1096,11 +1102,7 @@ You can download this file using the download button above.`;
 
         // Prepare the messages for the API call
         const apiMessages = [
-            {
-                role: "system",
-                content: systemMessage,
-            },
-            ...messages,
+            ...formattedMessages,
         ];
 
         // Check if we have a cached response
@@ -1115,7 +1117,7 @@ You can download this file using the download button above.`;
         // If no cache hit, make the API call
         const response = await openai.chat.completions.create({
             model: "gpt-4-turbo",
-            messages: apiMessages,
+            messages: apiMessages as any, // Type assertion
             temperature: 0.7,
             stream: false,
         });
