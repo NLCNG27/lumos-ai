@@ -135,3 +135,58 @@ body {
 .spreadsheet-row:hover .spreadsheet-cell {
   background-color: rgba(255, 255, 255, 0.03);
 }
+
+/* Math expression styling - Similar to ChatGPT */
+.katex-display {
+  margin: 1.2em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5em 0;
+}
+
+.katex {
+  font-size: 1.1em;
+}
+
+.katex-display > .katex {
+  font-size: 1.21em;
+  line-height: 1.4;
+}
+
+/* Add a subtle background to block math for better visibility */
+.math-block {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  padding: 1em;
+  margin: 1em 0;
+  overflow-x: auto;
+}
+
+/* Ensure inline math aligns properly with text */
+.math-inline {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  line-height: 0;
+  margin: 0 0.15em;
+}
+
+/* Custom scrollbar for math overflow */
+.katex-display::-webkit-scrollbar {
+  height: 4px;
+}
+
+.katex-display::-webkit-scrollbar-thumb {
+  background-color: rgba(107, 114, 128, 0.3);
+  border-radius: 4px;
+}
+
+.katex-display::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(107, 114, 128, 0.5);
+}
+
+.katex-error {
+  color: #ef4444;
+  border-bottom: 1px dotted #ef4444;
+  cursor: help;
+}

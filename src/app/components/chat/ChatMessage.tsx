@@ -1,6 +1,6 @@
 import { Message, ProcessedFile } from "@/app/types";
 import ReactMarkdown from "react-markdown";
-import { useState, memo, useRef, useEffect } from "react";
+import React, { useState, memo, useRef, useEffect } from "react";
 import Image from "next/image";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
@@ -14,6 +14,12 @@ import DatasetPreview from '../ui/DatasetPreview';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
+
+// Extend Components type to include our custom math handlers
+interface ExtendedComponents extends Components {
+    inlineMath?: (props: { value: string }) => React.ReactElement;
+    math?: (props: { value: string }) => React.ReactElement;
+}
 
 type ChatMessageProps = {
     message: Message;
@@ -150,7 +156,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
     };
 
     // Define markdown components for consistent rendering
-    const markdownComponents: Components = {
+    const markdownComponents: ExtendedComponents = {
         h1: ({...props}: any) => <h1 className="text-2xl font-bold my-3" {...props} />,
         h2: ({...props}: any) => <h2 className="text-xl font-bold my-3" {...props} />,
         h3: ({...props}: any) => <h3 className="text-lg font-bold my-2" {...props} />,
@@ -173,12 +179,24 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
         code: ({ className, children, inline, ...props }: CodeProps) => {
             const match = /language-(\w+)/.exec(className || '');
             
+            // Handle math code blocks better
             if (match && (match[1] === 'latex' || match[1] === 'math' || match[1] === 'tex')) {
                 try {
-                    return <BlockMath math={String(children).replace(/\n$/, '')} />;
+                    const mathContent = String(children).replace(/\n$/, '').trim();
+                    return (
+                        <div className="math-block">
+                            <BlockMath math={mathContent} errorColor="#ef4444" />
+                        </div>
+                    );
                 } catch (error) {
                     console.error('Error rendering LaTeX in code block:', error);
-                    return <code className="bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-base font-mono" {...props}>{children}</code>;
+                    return (
+                        <code className="bg-red-100/10 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-base font-mono" {...props}>
+                            <span className="katex-error" title="LaTeX rendering error">
+                                {children}
+                            </span>
+                        </code>
+                    );
                 }
             }
             
@@ -241,6 +259,42 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
             );
         },
         pre: ({children}: any) => <div className="overflow-hidden rounded-md my-3">{children}</div>,
+        inlineMath: ({ value }: { value: string }) => {
+            try {
+                return (
+                    <span className="math-inline">
+                        <InlineMath math={value} errorColor="#ef4444" />
+                    </span>
+                );
+            } catch (error) {
+                console.error('Error rendering inline LaTeX:', error);
+                return (
+                    <code className="bg-red-100/10 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-xs font-mono">
+                        <span className="katex-error" title="LaTeX rendering error">
+                            {value}
+                        </span>
+                    </code>
+                );
+            }
+        },
+        math: ({ value }: { value: string }) => {
+            try {
+                return (
+                    <div className="math-block">
+                        <BlockMath math={value} errorColor="#ef4444" />
+                    </div>
+                );
+            } catch (error) {
+                console.error('Error rendering block LaTeX:', error);
+                return (
+                    <pre className="bg-red-100/10 dark:bg-red-900/30 p-3 rounded text-sm font-mono">
+                        <span className="katex-error" title="LaTeX rendering error">
+                            {value}
+                        </span>
+                    </pre>
+                );
+            }
+        },
     };
 
     // Process the message content to extract datasets
@@ -327,97 +381,45 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
 
     // Process the message content to extract LaTeX blocks
     const processLatexContent = (content: string) => {
-        // Check if content contains LaTeX delimiters
-        if (!content.includes('\\[') && !content.includes('\\(')) {
+        // Check if content contains various LaTeX delimiters
+        const hasStandardLatex = content.includes('\\[') || content.includes('\\(') || 
+            content.includes('$$') || content.includes('$');
+        
+        if (!hasStandardLatex) {
             return { hasLatex: false, processedContent: content };
         }
 
-        // Process the content to handle multiline LaTeX blocks
-        const lines = content.split('\n');
-        const processedLines = [];
-        let inLatexBlock = false;
-        let latexContent = '';
-        let currentBlockType = '';
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-
-            // Check for LaTeX block start
-            if (line.includes('\\[')) {
-                inLatexBlock = true;
-                currentBlockType = 'block';
-                latexContent = line.replace('\\[', '').trim();
-                continue;
-            } 
-            // Check for LaTeX inline start
-            else if (line.includes('\\(')) {
-                inLatexBlock = true;
-                currentBlockType = 'inline';
-                latexContent = line.replace('\\(', '').trim();
-                continue;
+        // Enhanced regex patterns for LaTeX detection
+        const blockLatexRegex = /(\\\[|\$\$)([\s\S]*?)(\\\]|\$\$)/g;
+        const inlineLatexRegex = /(\\\(|\$)([^\$]+?)(\\\)|\$)/g;
+        
+        let processedContent = content;
+        
+        // Replace block LaTeX with markdown code blocks for better rendering
+        processedContent = processedContent.replace(blockLatexRegex, (match, open, formula, close) => {
+            // Clean up the formula by trimming extra whitespace
+            const cleanFormula = formula.trim();
+            return '\n```math\n' + cleanFormula + '\n```\n';
+        });
+        
+        // Replace inline LaTeX with custom tags for inline math
+        processedContent = processedContent.replace(inlineLatexRegex, (match, open, formula, close) => {
+            // For single dollar signs, make sure it's actually math and not a currency symbol
+            if (open === '$' && close === '$') {
+                // If the formula contains spaces and math operators, it's likely math
+                const isMath = /[a-zA-Z\\\(\)\[\]\{\}_^]/.test(formula);
+                if (!isMath) return match; // Return original if likely not math
             }
-            // Check for LaTeX block end
-            else if (inLatexBlock && line.includes('\\]')) {
-                latexContent += ' ' + line.replace('\\]', '').trim();
-                processedLines.push({
-                    type: 'latex',
-                    mode: currentBlockType,
-                    content: latexContent.trim()
-                });
-                inLatexBlock = false;
-                latexContent = '';
-                continue;
-            }
-            // Check for LaTeX inline end
-            else if (inLatexBlock && line.includes('\\)')) {
-                latexContent += ' ' + line.replace('\\)', '').trim();
-                processedLines.push({
-                    type: 'latex',
-                    mode: currentBlockType,
-                    content: latexContent.trim()
-                });
-                inLatexBlock = false;
-                latexContent = '';
-                continue;
-            }
-            // Continue gathering content for a LaTeX block
-            else if (inLatexBlock) {
-                latexContent += ' ' + line.trim();
-                continue;
-            }
-            // Handle markdown headings (###, ####, etc.)
-            else if (line.trim().startsWith('#')) {
-                const headerMatch = line.trim().match(/^(#+)\s*(.*)$/);
-                if (headerMatch) {
-                    processedLines.push({
-                        type: 'heading',
-                        level: headerMatch[1].length,
-                        content: headerMatch[2]
-                    });
-                } else {
-                    processedLines.push({
-                        type: 'text',
-                        content: line
-                    });
-                }
-            }
-            // Handle list items with headings (like "1. **Calculus**:")
-            else if (/^\d+\.\s+\*\*.*?\*\*:/.test(line)) {
-                processedLines.push({
-                    type: 'listHeading',
-                    content: line
-                });
-            }
-            // Regular text line
-            else {
-                processedLines.push({
-                    type: 'text',
-                    content: line
-                });
-            }
-        }
-
-        return { hasLatex: true, processedLines };
+            
+            // Clean up the formula
+            const cleanFormula = formula.trim();
+            return '$' + cleanFormula + '$';
+        });
+        
+        return {
+            hasLatex: true,
+            processedContent
+        };
     };
 
     // Define types for the parts array
@@ -427,46 +429,36 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
 
     // Component to render the processed content
     const ProcessedContent = () => {
-        // If we have datasets, split the content by dataset markers and insert dataset components
+        // Process the content for LaTeX expressions
+        const processedLatex = processLatexContent(message.content);
+        
+        // If the message contains datasets, handle them separately
         if (datasets.length > 0) {
-            console.log('Rendering with datasets:', datasets.length);
+            // Use the improved processedContent that handles both LaTeX and regular text
+            const processedContent = processedLatex.hasLatex 
+                ? processedLatex.processedContent
+                : message.content;
             
-            // Create a modified content by replacing dataset markers with placeholders
-            let processedContent = message.content;
-            
-            // Replace each dataset with a unique placeholder
-            datasets.forEach((dataset, index) => {
-                if (dataset.fullMatch) {
-                    processedContent = processedContent.replace(dataset.fullMatch, `[DATASET_${index}]`);
-                }
-            });
-            
-            // Split by placeholders and create an array of parts
+            // The rest of dataset handling logic remains the same
             const parts: ContentPart[] = [];
             let lastIndex = 0;
             
-            for (let i = 0; i < datasets.length; i++) {
-                const placeholder = `[DATASET_${i}]`;
-                const placeholderIndex = processedContent.indexOf(placeholder, lastIndex);
-                
-                if (placeholderIndex !== -1) {
-                    // Add text before the placeholder
-                    if (placeholderIndex > lastIndex) {
+            // Process each dataset placeholder
+            datasets.forEach((dataset, index) => {
+                const placeholderStart = processedContent.indexOf(dataset.fullMatch || '', lastIndex);
+                if (placeholderStart !== -1) {
+                    // Add text content before the dataset
+                    if (placeholderStart > lastIndex) {
                         parts.push({
                             type: 'text',
-                            content: processedContent.substring(lastIndex, placeholderIndex)
+                            content: processedContent.substring(lastIndex, placeholderStart)
                         });
                     }
-                    
                     // Add the dataset
-                    parts.push({
-                        type: 'dataset',
-                        index: i
-                    });
-                    
-                    lastIndex = placeholderIndex + placeholder.length;
+                    parts.push({ type: 'dataset', index });
+                    lastIndex = placeholderStart + (dataset.fullMatch?.length || 0);
                 }
-            }
+            });
             
             // Add any remaining text
             if (lastIndex < processedContent.length) {
@@ -510,7 +502,20 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
             );
         }
         
-        // If no datasets, render the content normally
+        // If content has LaTeX, use the processed content
+        if (processedLatex.hasLatex) {
+            return (
+                <ReactMarkdown
+                    components={markdownComponents}
+                    remarkPlugins={[remarkMath, remarkGfm]}
+                    rehypePlugins={[rehypeKatex]}
+                >
+                    {processedLatex.processedContent}
+                </ReactMarkdown>
+            );
+        }
+        
+        // Otherwise, render content normally
         return (
             <ReactMarkdown
                 components={markdownComponents}
