@@ -9,44 +9,6 @@ import {
 } from "./vectorStore";
 import { processDocument, getDocumentInfo } from "./documentProcessor";
 
-// Function to get the appropriate data directory based on environment
-const getDataDirectory = () => {
-    // Check if we're in a serverless environment (like Vercel/AWS Lambda)
-    if (process.env.NODE_ENV === 'production') {
-        // Use the OS temp directory which is writable in most serverless environments
-        return path.join(os.tmpdir(), 'lumos-data');
-    } else {
-        // In development, use the local data directory
-        return path.join(process.cwd(), 'data');
-    }
-};
-
-// Directory for storing document metadata
-const DOCUMENTS_DIR = path.join(getDataDirectory(), "documents");
-
-// Ensure the documents directory exists
-export const ensureDocumentsDir = async () => {
-    try {
-        console.log(`Creating documents directory: ${DOCUMENTS_DIR}`);
-        await fs.promises.mkdir(DOCUMENTS_DIR, { recursive: true });
-        console.log(`Successfully created documents directory: ${DOCUMENTS_DIR}`);
-        return true;
-    } catch (error) {
-        console.error("Error creating documents directory:", error);
-        throw error; // Re-throw to make sure the error is handled properly
-    }
-};
-
-// Initialize on module load - but don't block execution
-(async () => {
-    try {
-        console.log(`Using data directory: ${getDataDirectory()}`);
-        await ensureDocumentsDir();
-    } catch (error) {
-        console.error("Failed to initialize documents directory:", error);
-    }
-})();
-
 // Type for document info
 export type DocumentInfo = {
     id: string;
@@ -72,11 +34,6 @@ export const addDocument = async (
         // Get document info
         const docInfo = getDocumentInfo(documentId, fileName, documents);
 
-        // Save document info to disk only if requested
-        if (persistToDisk) {
-            await saveDocumentInfo(docInfo as DocumentInfo);
-        }
-
         // Initialize vector store with persistence option
         await initializeVectorStore(documentId, documents, persistToDisk);
 
@@ -87,82 +44,25 @@ export const addDocument = async (
     }
 };
 
-// Save document info to disk
-const saveDocumentInfo = async (docInfo: DocumentInfo): Promise<void> => {
-    try {
-        await ensureDocumentsDir();
-
-        const infoPath = path.join(DOCUMENTS_DIR, `${docInfo.id}.json`);
-        await fs.promises.writeFile(
-            infoPath,
-            JSON.stringify(docInfo, null, 2),
-            "utf-8"
-        );
-
-        console.log(`Document info saved to ${infoPath}`);
-    } catch (error) {
-        console.error(`Error saving document info for ${docInfo.id}:`, error);
-        throw error;
-    }
-};
-
 // Get document info
 export const getDocumentInfoById = async (
     documentId: string
 ): Promise<DocumentInfo | null> => {
-    try {
-        const infoPath = path.join(DOCUMENTS_DIR, `${documentId}.json`);
-
-        if (!fs.existsSync(infoPath)) {
-            console.log(`Document info for ${documentId} not found`);
-            return null;
-        }
-
-        const data = await fs.promises.readFile(infoPath, "utf-8");
-        return JSON.parse(data) as DocumentInfo;
-    } catch (error) {
-        console.error(`Error getting document info for ${documentId}:`, error);
-        return null;
-    }
+    // This would normally fetch from disk, but now just returns null
+    return null;
 };
 
 // List all documents
 export const listDocuments = async (): Promise<DocumentInfo[]> => {
-    try {
-        await ensureDocumentsDir();
-
-        const files = await fs.promises.readdir(DOCUMENTS_DIR);
-        const jsonFiles = files.filter((file) => file.endsWith(".json"));
-
-        const documents = await Promise.all(
-            jsonFiles.map(async (file) => {
-                const data = await fs.promises.readFile(
-                    path.join(DOCUMENTS_DIR, file),
-                    "utf-8"
-                );
-                return JSON.parse(data) as DocumentInfo;
-            })
-        );
-
-        return documents;
-    } catch (error) {
-        console.error("Error listing documents:", error);
-        return [];
-    }
+    // This would normally read from disk, but now just returns empty array
+    return [];
 };
 
 // Delete a document
 export const deleteDocument = async (documentId: string): Promise<boolean> => {
     try {
-        // Delete vector store
+        // Delete vector store only
         await deleteVectorStore(documentId);
-
-        // Delete document info
-        const infoPath = path.join(DOCUMENTS_DIR, `${documentId}.json`);
-        if (fs.existsSync(infoPath)) {
-            await fs.promises.unlink(infoPath);
-        }
-
         return true;
     } catch (error) {
         console.error(`Error deleting document ${documentId}:`, error);

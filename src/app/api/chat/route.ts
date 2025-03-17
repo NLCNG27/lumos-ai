@@ -292,38 +292,18 @@ interface Message {
 
 // Function to get the appropriate data directory based on environment
 const getDataDirectory = () => {
-    // Check if we're in a serverless environment (like Vercel/AWS Lambda)
-    if (process.env.NODE_ENV === 'production') {
-        // Use the OS temp directory which is writable in most serverless environments
-        return path.join(os.tmpdir(), 'lumos-data');
-    } else {
-        // In development, use the local data directory
-        return path.join(process.cwd(), 'data');
-    }
+    // Stub function - no longer creates directories
+    return '';
 };
 
 // Helper function to ensure directory exists
 const ensureDirectoryExists = async (directoryPath: string) => {
-    try {
-        await mkdir(directoryPath, { recursive: true });
-        console.log(`Successfully created directory: ${directoryPath}`);
-        return true;
-    } catch (error) {
-        console.error(`Error creating directory ${directoryPath}:`, error);
-        return false;
-    }
+    // Stub function - no longer creates directories
+    return true;
 };
 
 // Create necessary directories at module initialization time
-(async () => {
-    try {
-        const dataDir = getDataDirectory();
-        console.log(`Using data directory: ${dataDir}`);
-        await ensureDirectoryExists(dataDir);
-    } catch (error) {
-        console.error("Failed to initialize data directory:", error);
-    }
-})();
+// Removed initialization code
 
 export async function POST(req: Request) {
     try {
