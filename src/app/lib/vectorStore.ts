@@ -2,6 +2,7 @@ import { OpenAIEmbeddings } from "langchain/embeddings/openai";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import fs from "fs";
 import path from "path";
+import os from "os";
 
 // Define a type for the document with metadata
 export type Document = {
@@ -18,17 +19,42 @@ export type Document = {
 const vectorStores: Record<string, MemoryVectorStore> = {};
 const documentsById: Record<string, Document[]> = {};
 
+// Function to get the appropriate data directory based on environment
+const getDataDirectory = () => {
+    // Check if we're in a serverless environment (like Vercel/AWS Lambda)
+    if (process.env.NODE_ENV === 'production') {
+        // Use the OS temp directory which is writable in most serverless environments
+        return path.join(os.tmpdir(), 'lumos-data');
+    } else {
+        // In development, use the local data directory
+        return path.join(process.cwd(), 'data');
+    }
+};
+
 // Directory for storing vector stores
-const VECTOR_STORE_DIR = path.join(process.cwd(), "data", "vector-stores");
+const VECTOR_STORE_DIR = path.join(getDataDirectory(), "vector-stores");
 
 // Ensure the vector store directory exists
 export const ensureVectorStoreDir = async () => {
     try {
+        console.log(`Creating vector store directory: ${VECTOR_STORE_DIR}`);
         await fs.promises.mkdir(VECTOR_STORE_DIR, { recursive: true });
+        console.log(`Successfully created vector store directory: ${VECTOR_STORE_DIR}`);
     } catch (error) {
         console.error("Error creating vector store directory:", error);
+        throw error; // Re-throw to make sure the error is handled properly
     }
 };
+
+// Initialize on module load - but don't block execution
+(async () => {
+    try {
+        console.log(`Using data directory: ${getDataDirectory()}`);
+        await ensureVectorStoreDir();
+    } catch (error) {
+        console.error("Failed to initialize vector store directory:", error);
+    }
+})();
 
 // Initialize the vector store for a document
 export const initializeVectorStore = async (

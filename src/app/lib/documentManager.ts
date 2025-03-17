@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import os from "os";
 import { Document } from "./vectorStore";
 import {
     initializeVectorStore,
@@ -8,20 +9,43 @@ import {
 } from "./vectorStore";
 import { processDocument, getDocumentInfo } from "./documentProcessor";
 
+// Function to get the appropriate data directory based on environment
+const getDataDirectory = () => {
+    // Check if we're in a serverless environment (like Vercel/AWS Lambda)
+    if (process.env.NODE_ENV === 'production') {
+        // Use the OS temp directory which is writable in most serverless environments
+        return path.join(os.tmpdir(), 'lumos-data');
+    } else {
+        // In development, use the local data directory
+        return path.join(process.cwd(), 'data');
+    }
+};
+
 // Directory for storing document metadata
-const DOCUMENTS_DIR = path.join(process.cwd(), "data", "documents");
+const DOCUMENTS_DIR = path.join(getDataDirectory(), "documents");
 
 // Ensure the documents directory exists
 export const ensureDocumentsDir = async () => {
     try {
+        console.log(`Creating documents directory: ${DOCUMENTS_DIR}`);
         await fs.promises.mkdir(DOCUMENTS_DIR, { recursive: true });
+        console.log(`Successfully created documents directory: ${DOCUMENTS_DIR}`);
+        return true;
     } catch (error) {
         console.error("Error creating documents directory:", error);
+        throw error; // Re-throw to make sure the error is handled properly
     }
 };
 
-// Initialize on module load
-ensureDocumentsDir();
+// Initialize on module load - but don't block execution
+(async () => {
+    try {
+        console.log(`Using data directory: ${getDataDirectory()}`);
+        await ensureDocumentsDir();
+    } catch (error) {
+        console.error("Failed to initialize documents directory:", error);
+    }
+})();
 
 // Type for document info
 export type DocumentInfo = {

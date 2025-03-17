@@ -2,6 +2,10 @@
  * Utility functions for generating random datasets in various formats
  */
 
+import fs from "fs";
+import path from "path";
+import os from "os";
+
 interface DatasetOptions {
     rows?: number;
     columns?: number;
@@ -402,6 +406,18 @@ const formatAsHTML = (data: any[][], options: DatasetOptions): string => {
 </html>`;
 
     return html;
+};
+
+// Function to get the appropriate data directory based on environment
+const getDataDirectory = () => {
+    // Check if we're in a serverless environment (like Vercel/AWS Lambda)
+    if (process.env.NODE_ENV === 'production') {
+        // Use the OS temp directory which is writable in most serverless environments
+        return path.join(os.tmpdir(), 'lumos-data');
+    } else {
+        // In development, use the local data directory
+        return path.join(process.cwd(), 'data');
+    }
 };
 
 /**
