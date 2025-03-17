@@ -1680,7 +1680,7 @@ async function callOpenAIWithTimeout(messages: any[], model: string, temperature
         const id = setTimeout(() => {
             clearTimeout(id);
             reject(new Error(`OpenAI API call timed out after 60 seconds`));
-        }, 20000); // 60 second timeout
+        }, 60000); // 60 second timeout
     });
 
     try {
