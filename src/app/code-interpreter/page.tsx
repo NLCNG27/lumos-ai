@@ -2,13 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import ReactMarkdown from "react-markdown";
-import rehypeKatex from "rehype-katex";
-import remarkMath from "remark-math";
-import remarkGfm from "remark-gfm";
 import CodeBlock from "../components/ui/CodeBlock";
 import LoadingDots from "../components/ui/LoadingDots";
+import MathMarkdown from "../components/ui/MathMarkdown";
 import Image from "next/image";
+import 'katex/dist/katex.min.css';
 
 // Helper function to extract code blocks from markdown
 const extractCodeBlocks = (markdown: string) => {
@@ -79,7 +77,7 @@ export default function CodeInterpreterTest() {
   // Process the response content to replace code blocks with CodeBlock component
   const renderResponse = () => {
     if (!response.content) return null;
-
+    
     const codeBlocks = extractCodeBlocks(response.content);
     let processedContent = response.content;
 
@@ -99,55 +97,112 @@ export default function CodeInterpreterTest() {
       );
     });
 
+    // Special handling for markdown tables
+    const hasTable = processedContent.includes('|') && processedContent.includes('\n|');
+    
     // Split content by code block and image placeholders
     const parts = processedContent.split(/(<code-block-\d+><\/code-block-\d+>|<image-\d+><\/image-\d+>)/);
 
     return (
       <div className="prose max-w-full dark:prose-invert">
-        {parts.map((part, index) => {
-          // Check if this part is a code block placeholder
-          const codeBlockMatch = part.match(/<code-block-(\d+)><\/code-block-\d+>/);
-          if (codeBlockMatch) {
-            const blockIndex = parseInt(codeBlockMatch[1], 10);
-            const block = codeBlocks[blockIndex];
-            
-            return (
-              <CodeBlock 
-                key={`code-block-${index}`} 
-                code={block.code} 
-                language={block.language} 
-              />
-            );
-          }
-          
-          // Check if this part is an image placeholder
-          const imageMatch = part.match(/<image-(\d+)><\/image-\d+>/);
-          if (imageMatch) {
-            const imageIndex = parseInt(imageMatch[1], 10);
-            const imageUrl = response.images[imageIndex];
-            
-            return (
-              <div key={`image-${index}`} className="my-4">
-                <img 
-                  src={imageUrl} 
-                  alt={`Generated visualization ${imageIndex + 1}`}
-                  className="max-w-full h-auto rounded-md border border-gray-300"
+        {hasTable ? (
+          // If content has tables, process differently to avoid LaTeX parsing issues
+          <div className="math-content">
+            {parts.map((part, index) => {
+              // Check if this part is a code block placeholder
+              const codeBlockMatch = part.match(/<code-block-(\d+)><\/code-block-\d+>/);
+              if (codeBlockMatch) {
+                const blockIndex = parseInt(codeBlockMatch[1], 10);
+                const block = codeBlocks[blockIndex];
+                
+                return (
+                  <CodeBlock 
+                    key={`code-block-${index}`} 
+                    code={block.code} 
+                    language={block.language} 
+                  />
+                );
+              }
+              
+              // Check if this part is an image placeholder
+              const imageMatch = part.match(/<image-(\d+)><\/image-\d+>/);
+              if (imageMatch) {
+                const imageIndex = parseInt(imageMatch[1], 10);
+                const imageUrl = response.images[imageIndex];
+                
+                return (
+                  <div key={`image-${index}`} className="my-4">
+                    <img 
+                      src={imageUrl} 
+                      alt={`Generated visualization ${imageIndex + 1}`}
+                      className="max-w-full h-auto rounded-md border border-gray-300"
+                    />
+                  </div>
+                );
+              }
+              
+              // Special handling for markdown tables vs. math expressions
+              if (part.includes('|') && part.includes('\n|')) {
+                return (
+                  <div key={`table-${index}`} className="overflow-auto">
+                    <MathMarkdown key={`markdown-${index}`}>
+                      {part}
+                    </MathMarkdown>
+                  </div>
+                );
+              }
+              
+              // Regular markdown content with math
+              return (
+                <MathMarkdown key={`markdown-${index}`}>
+                  {part}
+                </MathMarkdown>
+              );
+            })}
+          </div>
+        ) : (
+          // Standard rendering for non-table content
+          parts.map((part, index) => {
+            // Check if this part is a code block placeholder
+            const codeBlockMatch = part.match(/<code-block-(\d+)><\/code-block-\d+>/);
+            if (codeBlockMatch) {
+              const blockIndex = parseInt(codeBlockMatch[1], 10);
+              const block = codeBlocks[blockIndex];
+              
+              return (
+                <CodeBlock 
+                  key={`code-block-${index}`} 
+                  code={block.code} 
+                  language={block.language} 
                 />
-              </div>
+              );
+            }
+            
+            // Check if this part is an image placeholder
+            const imageMatch = part.match(/<image-(\d+)><\/image-\d+>/);
+            if (imageMatch) {
+              const imageIndex = parseInt(imageMatch[1], 10);
+              const imageUrl = response.images[imageIndex];
+              
+              return (
+                <div key={`image-${index}`} className="my-4">
+                  <img 
+                    src={imageUrl} 
+                    alt={`Generated visualization ${imageIndex + 1}`}
+                    className="max-w-full h-auto rounded-md border border-gray-300"
+                  />
+                </div>
+              );
+            }
+            
+            // Otherwise render as markdown with our enhanced math component
+            return (
+              <MathMarkdown key={`markdown-${index}`}>
+                {part}
+              </MathMarkdown>
             );
-          }
-          
-          // Otherwise render as markdown
-          return (
-            <ReactMarkdown
-              key={`markdown-${index}`}
-              remarkPlugins={[remarkMath, remarkGfm]}
-              rehypePlugins={[rehypeKatex]}
-            >
-              {part}
-            </ReactMarkdown>
-          );
-        })}
+          })
+        )}
       </div>
     );
   };
