@@ -160,6 +160,7 @@ body {
   padding: 1em;
   margin: 1em 0;
   overflow-x: auto;
+  display: block; /* Ensure it expands properly when used on a span */
 }
 
 /* Ensure inline math aligns properly with text */

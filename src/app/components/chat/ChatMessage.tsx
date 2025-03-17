@@ -2,18 +2,18 @@ import { Message, ProcessedFile } from "@/app/types";
 import ReactMarkdown from "react-markdown";
 import React, { useState, memo, useRef, useEffect } from "react";
 import Image from "next/image";
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
-import type { Components } from 'react-markdown';
-import 'katex/dist/katex.min.css';
-import { InlineMath, BlockMath } from 'react-katex';
-import DownloadButton from '../ui/DownloadButton';
-import CodeBlockMenu from '../ui/CodeBlockMenu';
-import { isDownloadableCode, suggestFilename } from '@/app/lib/fileUtils';
-import DatasetPreview from '../ui/DatasetPreview';
-import remarkMath from 'remark-math';
-import remarkGfm from 'remark-gfm';
-import rehypeKatex from 'rehype-katex';
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
+import type { Components } from "react-markdown";
+import "katex/dist/katex.min.css";
+import { InlineMath, BlockMath } from "react-katex";
+import DownloadButton from "../ui/DownloadButton";
+import CodeBlockMenu from "../ui/CodeBlockMenu";
+import { isDownloadableCode, suggestFilename } from "@/app/lib/fileUtils";
+import DatasetPreview from "../ui/DatasetPreview";
+import remarkMath from "remark-math";
+import remarkGfm from "remark-gfm";
+import rehypeKatex from "rehype-katex";
 
 // Extend Components type to include our custom math handlers
 interface ExtendedComponents extends Components {
@@ -38,16 +38,21 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
     const isUser = message.role === "user";
     const [isCopied, setIsCopied] = useState(false);
     // Add state for code block context menu
-    const [activeCodeBlock, setActiveCodeBlock] = useState<{ content: string; language: string } | null>(null);
+    const [activeCodeBlock, setActiveCodeBlock] = useState<{
+        content: string;
+        language: string;
+    } | null>(null);
     const codeBlockRef = useRef<HTMLDivElement>(null);
     // Add state for dataset detection
-    const [datasets, setDatasets] = useState<Array<{
-        content: string;
-        format: string;
-        filename: string;
-        mimeType: string;
-        fullMatch?: string;
-    }>>([]);
+    const [datasets, setDatasets] = useState<
+        Array<{
+            content: string;
+            format: string;
+            filename: string;
+            mimeType: string;
+            fullMatch?: string;
+        }>
+    >([]);
 
     const copyToClipboard = () => {
         navigator.clipboard
@@ -70,7 +75,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                 {message.files.map((file) => {
                     // Skip rendering if file is invalid
                     if (!file || !file.id) return null;
-                    
+
                     return (
                         <div
                             key={file.id}
@@ -86,7 +91,11 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                                         {file.name || "Unknown file"}
                                     </p>
                                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        {file.size ? `${(file.size / 1024).toFixed(1)} KB` : "Unknown size"}
+                                        {file.size
+                                            ? `${(file.size / 1024).toFixed(
+                                                  1
+                                              )} KB`
+                                            : "Unknown size"}
                                     </p>
                                 </div>
                             </div>
@@ -100,7 +109,12 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
     // Render file preview based on file type
     const renderFilePreview = (file: ProcessedFile) => {
         // Add null checks to prevent errors when file properties are undefined
-        if (file && file.type && file.type.startsWith("image/") && file.previewUrl) {
+        if (
+            file &&
+            file.type &&
+            file.type.startsWith("image/") &&
+            file.previewUrl
+        ) {
             return (
                 <div className="relative w-16 h-16 overflow-hidden rounded bg-gray-100 dark:bg-gray-800">
                     <Image
@@ -117,7 +131,8 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
         let iconPath;
         let bgColor = "bg-gray-100 dark:bg-gray-800";
         let textColor = "text-gray-600 dark:text-gray-300";
-        const fileExtension = file && file.name ? file.name.split(".").pop()?.toLowerCase() : "";
+        const fileExtension =
+            file && file.name ? file.name.split(".").pop()?.toLowerCase() : "";
 
         if (["pdf"].includes(fileExtension || "")) {
             iconPath =
@@ -150,68 +165,199 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                     fill="currentColor"
                 >
                     <path d={iconPath} />
-                </svg>  
+                </svg>
             </div>
         );
     };
 
     // Define markdown components for consistent rendering
     const markdownComponents: ExtendedComponents = {
-        h1: ({...props}: any) => <h1 className="text-2xl font-bold my-3" {...props} />,
-        h2: ({...props}: any) => <h2 className="text-xl font-bold my-3" {...props} />,
-        h3: ({...props}: any) => <h3 className="text-lg font-bold my-2" {...props} />,
-        h4: ({...props}: any) => <h4 className="text-base font-bold my-2" {...props} />,
-        h5: ({...props}: any) => <h5 className="text-sm font-bold my-1" {...props} />,
-        h6: ({...props}: any) => <h6 className="text-xs font-bold my-1" {...props} />,
-        p: ({...props}: any) => <p className="my-2 leading-relaxed text-base" {...props} />,
-        ul: ({...props}: any) => <ul className="list-disc pl-5 my-3 space-y-1 text-base" {...props} />,
-        ol: ({...props}: any) => <ol className="list-decimal pl-5 my-3 space-y-1 text-base" {...props} />,
-        li: ({...props}: any) => <li className="my-1 text-base" {...props} />,
-        a: ({...props}: any) => <a className="text-blue-500 dark:text-blue-400 underline hover:text-blue-700 dark:hover:text-blue-300 transition-colors text-base" {...props} />,
-        blockquote: ({...props}: any) => <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 py-1 my-3 text-gray-700 dark:text-gray-300 italic text-base" {...props} />,
-        hr: ({...props}: any) => <hr className="my-4 border-gray-300 dark:border-gray-600" {...props} />,
-        table: ({...props}: any) => <div className="overflow-x-auto my-3"><table className="min-w-full divide-y divide-gray-300 dark:divide-gray-600 border border-gray-300 dark:border-gray-600 rounded text-base" {...props} /></div>,
-        thead: ({...props}: any) => <thead className="bg-gray-100 dark:bg-gray-700" {...props} />,
-        tbody: ({...props}: any) => <tbody className="divide-y divide-gray-200 dark:divide-gray-700" {...props} />,
-        tr: ({...props}: any) => <tr className="hover:bg-gray-50 dark:hover:bg-gray-800/50" {...props} />,
-        th: ({...props}: any) => <th className="px-3 py-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider" {...props} />,
-        td: ({...props}: any) => <td className="px-3 py-2 whitespace-nowrap text-base" {...props} />,
+        h1: ({ ...props }: any) => (
+            <h1 className="text-2xl font-bold my-3" {...props} />
+        ),
+        h2: ({ ...props }: any) => (
+            <h2 className="text-xl font-bold my-3" {...props} />
+        ),
+        h3: ({ ...props }: any) => (
+            <h3 className="text-lg font-bold my-2" {...props} />
+        ),
+        h4: ({ ...props }: any) => (
+            <h4 className="text-base font-bold my-2" {...props} />
+        ),
+        h5: ({ ...props }: any) => (
+            <h5 className="text-sm font-bold my-1" {...props} />
+        ),
+        h6: ({ ...props }: any) => (
+            <h6 className="text-xs font-bold my-1" {...props} />
+        ),
+        p: ({ children, ...props }: any) => {
+            // Check if children contains math elements from KaTeX (they use divs)
+            // We need to check both for our math-block class and for KaTeX's rendered output
+            const containsMath = React.Children.toArray(children).some(
+                (child) => {
+                    if (React.isValidElement(child)) {
+                        const childProps = child.props as any;
+                        // Check for our math-block class
+                        if (childProps.className?.includes("math-block"))
+                            return true;
+
+                        // Check for KaTeX components which might contain divs
+                        if (
+                            childProps.dangerouslySetInnerHTML?.__html?.includes(
+                                "katex"
+                            )
+                        )
+                            return true;
+
+                        // Check for BlockMath or InternalBlockMath components
+                        if (
+                            child.type === BlockMath ||
+                            (typeof child.type === "function" &&
+                                (child.type.name === "BlockMath" ||
+                                    child.type.name === "InternalBlockMath"))
+                        ) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            );
+
+            // If it contains math elements that would render divs, use a div instead of p
+            return containsMath ? (
+                <div
+                    className="my-2 leading-relaxed text-base paragraph-content"
+                    {...props}
+                >
+                    {children}
+                </div>
+            ) : (
+                <div className="my-2 leading-relaxed text-base" {...props}>
+                    {children}
+                </div>
+            );
+        },
+        ul: ({ ...props }: any) => (
+            <ul
+                className="list-disc pl-5 my-3 space-y-1 text-base"
+                {...props}
+            />
+        ),
+        ol: ({ ...props }: any) => (
+            <ol
+                className="list-decimal pl-5 my-3 space-y-1 text-base"
+                {...props}
+            />
+        ),
+        li: ({ ...props }: any) => <li className="my-1 text-base" {...props} />,
+        a: ({ ...props }: any) => (
+            <a
+                className="text-blue-500 dark:text-blue-400 underline hover:text-blue-700 dark:hover:text-blue-300 transition-colors text-base"
+                {...props}
+            />
+        ),
+        blockquote: ({ ...props }: any) => (
+            <blockquote
+                className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 py-1 my-3 text-gray-700 dark:text-gray-300 italic text-base"
+                {...props}
+            />
+        ),
+        hr: ({ ...props }: any) => (
+            <hr
+                className="my-4 border-gray-300 dark:border-gray-600"
+                {...props}
+            />
+        ),
+        table: ({ ...props }: any) => (
+            <div className="overflow-x-auto my-3">
+                <table
+                    className="min-w-full divide-y divide-gray-300 dark:divide-gray-600 border border-gray-300 dark:border-gray-600 rounded text-base"
+                    {...props}
+                />
+            </div>
+        ),
+        thead: ({ ...props }: any) => (
+            <thead className="bg-gray-100 dark:bg-gray-700" {...props} />
+        ),
+        tbody: ({ ...props }: any) => (
+            <tbody
+                className="divide-y divide-gray-200 dark:divide-gray-700"
+                {...props}
+            />
+        ),
+        tr: ({ ...props }: any) => (
+            <tr
+                className="hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                {...props}
+            />
+        ),
+        th: ({ ...props }: any) => (
+            <th
+                className="px-3 py-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider"
+                {...props}
+            />
+        ),
+        td: ({ ...props }: any) => (
+            <td className="px-3 py-2 whitespace-nowrap text-base" {...props} />
+        ),
         code: ({ className, children, inline, ...props }: CodeProps) => {
-            const match = /language-(\w+)/.exec(className || '');
-            
+            const match = /language-(\w+)/.exec(className || "");
+
             // Handle math code blocks better
-            if (match && (match[1] === 'latex' || match[1] === 'math' || match[1] === 'tex')) {
+            if (
+                match &&
+                (match[1] === "latex" ||
+                    match[1] === "math" ||
+                    match[1] === "tex")
+            ) {
                 try {
-                    const mathContent = String(children).replace(/\n$/, '').trim();
+                    const mathContent = String(children)
+                        .replace(/\n$/, "")
+                        .trim();
                     return (
-                        <div className="math-block">
-                            <BlockMath math={mathContent} errorColor="#ef4444" />
-                        </div>
+                        <span className="math-block block">
+                            <BlockMath
+                                math={mathContent}
+                                errorColor="#ef4444"
+                            />
+                        </span>
                     );
                 } catch (error) {
-                    console.error('Error rendering LaTeX in code block:', error);
+                    console.error(
+                        "Error rendering LaTeX in code block:",
+                        error
+                    );
                     return (
-                        <code className="bg-red-100/10 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-base font-mono" {...props}>
-                            <span className="katex-error" title="LaTeX rendering error">
+                        <code
+                            className="bg-red-100/10 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-base font-mono"
+                            {...props}
+                        >
+                            <span
+                                className="katex-error"
+                                title="LaTeX rendering error"
+                            >
                                 {children}
                             </span>
                         </code>
                     );
                 }
             }
-            
-            const codeContent = String(children).replace(/\n$/, '');
-            const isDownloadable = match && isDownloadableCode(match[1], codeContent);
-            
+
+            const codeContent = String(children).replace(/\n$/, "");
+            const isDownloadable =
+                match && isDownloadableCode(match[1], codeContent);
+
             return match ? (
-                <div 
+                <div
                     ref={codeBlockRef}
-                    className={`relative group ${isDownloadable ? 'code-block-downloadable' : ''}`}
+                    className={`relative group ${
+                        isDownloadable ? "code-block-downloadable" : ""
+                    }`}
                     onContextMenu={() => {
                         if (isDownloadable) {
                             setActiveCodeBlock({
                                 content: codeContent,
-                                language: match[1]
+                                language: match[1],
                             });
                         }
                     }}
@@ -220,24 +366,42 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                     <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 rounded-t-md text-xs text-gray-400">
                         <span>{match[1]}</span>
                         <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button 
+                            <button
                                 className="text-gray-400 hover:text-white transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-700"
-                                onClick={() => navigator.clipboard.writeText(codeContent)}
+                                onClick={() =>
+                                    navigator.clipboard.writeText(codeContent)
+                                }
                                 title="Copy code"
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2" />
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-3.5 w-3.5"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2"
+                                    />
                                 </svg>
                                 Copy
                             </button>
-                            
+
                             {/* Add download button if the code is downloadable */}
                             {isDownloadable && (
-                                <DownloadButton 
+                                <DownloadButton
                                     content={codeContent}
                                     language={match[1]}
-                                    suggestedFilename={suggestFilename(codeContent, match[1])}
-                                    highlightAttention={codeContent.split('\n').length > 20}
+                                    suggestedFilename={suggestFilename(
+                                        codeContent,
+                                        match[1]
+                                    )}
+                                    highlightAttention={
+                                        codeContent.split("\n").length > 20
+                                    }
                                 />
                             )}
                         </div>
@@ -255,10 +419,17 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                     </SyntaxHighlighter>
                 </div>
             ) : (
-                <code className="bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-base font-mono" {...props}>{children}</code>
+                <code
+                    className="bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded text-base font-mono"
+                    {...props}
+                >
+                    {children}
+                </code>
             );
         },
-        pre: ({children}: any) => <div className="overflow-hidden rounded-md my-3">{children}</div>,
+        pre: ({ children }: any) => (
+            <div className="overflow-hidden rounded-md my-3">{children}</div>
+        ),
         inlineMath: ({ value }: { value: string }) => {
             try {
                 return (
@@ -267,10 +438,13 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                     </span>
                 );
             } catch (error) {
-                console.error('Error rendering inline LaTeX:', error);
+                console.error("Error rendering inline LaTeX:", error);
                 return (
                     <code className="bg-red-100/10 dark:bg-red-900/30 px-1.5 py-0.5 rounded text-xs font-mono">
-                        <span className="katex-error" title="LaTeX rendering error">
+                        <span
+                            className="katex-error"
+                            title="LaTeX rendering error"
+                        >
                             {value}
                         </span>
                     </code>
@@ -280,15 +454,18 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
         math: ({ value }: { value: string }) => {
             try {
                 return (
-                    <div className="math-block">
+                    <span className="math-block block">
                         <BlockMath math={value} errorColor="#ef4444" />
-                    </div>
+                    </span>
                 );
             } catch (error) {
-                console.error('Error rendering block LaTeX:', error);
+                console.error("Error rendering block LaTeX:", error);
                 return (
                     <pre className="bg-red-100/10 dark:bg-red-900/30 p-3 rounded text-sm font-mono">
-                        <span className="katex-error" title="LaTeX rendering error">
+                        <span
+                            className="katex-error"
+                            title="LaTeX rendering error"
+                        >
                             {value}
                         </span>
                     </pre>
@@ -300,69 +477,86 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
     // Process the message content to extract datasets
     useEffect(() => {
         // Look for dataset markers in the message
-        const datasetRegex = /```dataset-(?<format>[a-z]+)(?<options>\{.*?\})?\n(?<content>[\s\S]*?)```/g;
-        
+        const datasetRegex =
+            /```dataset-(?<format>[a-z]+)(?<options>\{.*?\})?\n(?<content>[\s\S]*?)```/g;
+
         // Reset datasets
         setDatasets([]);
-        
+
         // Get the message content
         const messageContent = message.content;
         if (!messageContent) return;
-        
-        console.log('Processing message for datasets, content length:', messageContent.length);
-        
+
+        console.log(
+            "Processing message for datasets, content length:",
+            messageContent.length
+        );
+
         // Find all dataset markers in the content
         let match;
         let matches = [];
-        
+
         // Use a regex that captures the entire match
         const regex = new RegExp(datasetRegex);
         let content = messageContent;
-        
+
         // First collect all matches
         while ((match = regex.exec(content)) !== null) {
-            const { format, options, content: datasetContent } = match.groups || {};
-            
+            const {
+                format,
+                options,
+                content: datasetContent,
+            } = match.groups || {};
+
             if (format && datasetContent) {
-                console.log(`Found dataset: format=${format}, content length=${datasetContent.length}`);
+                console.log(
+                    `Found dataset: format=${format}, content length=${datasetContent.length}`
+                );
                 matches.push({
                     format,
                     options,
                     content: datasetContent,
-                    fullMatch: match[0]
+                    fullMatch: match[0],
                 });
             }
         }
-        
+
         // Process the matches
         if (matches.length > 0) {
-            const extractedDatasets = matches.map(match => {
+            const extractedDatasets = matches.map((match) => {
                 const { format, options, content: datasetContent } = match;
-                
+
                 let parsedOptions = {};
                 if (options) {
                     try {
                         parsedOptions = JSON.parse(options);
                     } catch (e) {
-                        console.error('Failed to parse dataset options:', e);
+                        console.error("Failed to parse dataset options:", e);
                     }
                 }
 
-                const formatInfo: Record<string, { extension: string; mimeType: string }> = {
-                    csv: { extension: 'csv', mimeType: 'text/csv' },
-                    json: { extension: 'json', mimeType: 'application/json' },
-                    xml: { extension: 'xml', mimeType: 'application/xml' },
-                    yaml: { extension: 'yaml', mimeType: 'text/yaml' },
-                    sql: { extension: 'sql', mimeType: 'text/plain' },
-                    txt: { extension: 'txt', mimeType: 'text/plain' },
-                    markdown: { extension: 'md', mimeType: 'text/markdown' },
-                    html: { extension: 'html', mimeType: 'text/html' },
-                    tsv: { extension: 'tsv', mimeType: 'text/tab-separated-values' },
+                const formatInfo: Record<
+                    string,
+                    { extension: string; mimeType: string }
+                > = {
+                    csv: { extension: "csv", mimeType: "text/csv" },
+                    json: { extension: "json", mimeType: "application/json" },
+                    xml: { extension: "xml", mimeType: "application/xml" },
+                    yaml: { extension: "yaml", mimeType: "text/yaml" },
+                    sql: { extension: "sql", mimeType: "text/plain" },
+                    txt: { extension: "txt", mimeType: "text/plain" },
+                    markdown: { extension: "md", mimeType: "text/markdown" },
+                    html: { extension: "html", mimeType: "text/html" },
+                    tsv: {
+                        extension: "tsv",
+                        mimeType: "text/tab-separated-values",
+                    },
                 };
 
-                const { extension, mimeType } = formatInfo[format] || formatInfo.txt;
-                const filename = (parsedOptions as any).name 
-                    ? `${(parsedOptions as any).name}.${extension}` 
+                const { extension, mimeType } =
+                    formatInfo[format] || formatInfo.txt;
+                const filename = (parsedOptions as any).name
+                    ? `${(parsedOptions as any).name}.${extension}`
                     : `dataset.${extension}`;
 
                 return {
@@ -370,11 +564,11 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                     format,
                     filename,
                     mimeType,
-                    fullMatch: match.fullMatch
+                    fullMatch: match.fullMatch,
                 };
             });
-            
-            console.log('Extracted datasets:', extractedDatasets.length);
+
+            console.log("Extracted datasets:", extractedDatasets.length);
             setDatasets(extractedDatasets);
         }
     }, [message.content]);
@@ -382,9 +576,12 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
     // Process the message content to extract LaTeX blocks
     const processLatexContent = (content: string) => {
         // Check if content contains various LaTeX delimiters
-        const hasStandardLatex = content.includes('\\[') || content.includes('\\(') || 
-            content.includes('$$') || content.includes('$');
-        
+        const hasStandardLatex =
+            content.includes("\\[") ||
+            content.includes("\\(") ||
+            content.includes("$$") ||
+            content.includes("$");
+
         if (!hasStandardLatex) {
             return { hasLatex: false, processedContent: content };
         }
@@ -392,87 +589,100 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
         // Enhanced regex patterns for LaTeX detection
         const blockLatexRegex = /(\\\[|\$\$)([\s\S]*?)(\\\]|\$\$)/g;
         const inlineLatexRegex = /(\\\(|\$)([^\$]+?)(\\\)|\$)/g;
-        
+
         let processedContent = content;
-        
+
         // Replace block LaTeX with markdown code blocks for better rendering
-        processedContent = processedContent.replace(blockLatexRegex, (match, open, formula, close) => {
-            // Clean up the formula by trimming extra whitespace
-            const cleanFormula = formula.trim();
-            return '\n```math\n' + cleanFormula + '\n```\n';
-        });
-        
-        // Replace inline LaTeX with custom tags for inline math
-        processedContent = processedContent.replace(inlineLatexRegex, (match, open, formula, close) => {
-            // For single dollar signs, make sure it's actually math and not a currency symbol
-            if (open === '$' && close === '$') {
-                // If the formula contains spaces and math operators, it's likely math
-                const isMath = /[a-zA-Z\\\(\)\[\]\{\}_^]/.test(formula);
-                if (!isMath) return match; // Return original if likely not math
+        processedContent = processedContent.replace(
+            blockLatexRegex,
+            (match, open, formula, close) => {
+                // Clean up the formula by trimming extra whitespace
+                const cleanFormula = formula.trim();
+                return "\n```math\n" + cleanFormula + "\n```\n";
             }
-            
-            // Clean up the formula
-            const cleanFormula = formula.trim();
-            return '$' + cleanFormula + '$';
-        });
-        
+        );
+
+        // Replace inline LaTeX with custom tags for inline math
+        processedContent = processedContent.replace(
+            inlineLatexRegex,
+            (match, open, formula, close) => {
+                // For single dollar signs, make sure it's actually math and not a currency symbol
+                if (open === "$" && close === "$") {
+                    // If the formula contains spaces and math operators, it's likely math
+                    const isMath = /[a-zA-Z\\\(\)\[\]\{\}_^]/.test(formula);
+                    if (!isMath) return match; // Return original if likely not math
+                }
+
+                // Clean up the formula
+                const cleanFormula = formula.trim();
+                return "$" + cleanFormula + "$";
+            }
+        );
+
         return {
             hasLatex: true,
-            processedContent
+            processedContent,
         };
     };
 
     // Define types for the parts array
-    type ContentPart = 
-        | { type: 'text'; content: string }
-        | { type: 'dataset'; index: number };
+    type ContentPart =
+        | { type: "text"; content: string }
+        | { type: "dataset"; index: number };
 
     // Component to render the processed content
     const ProcessedContent = () => {
         // Process the content for LaTeX expressions
         const processedLatex = processLatexContent(message.content);
-        
+
         // If the message contains datasets, handle them separately
         if (datasets.length > 0) {
             // Use the improved processedContent that handles both LaTeX and regular text
-            const processedContent = processedLatex.hasLatex 
+            const processedContent = processedLatex.hasLatex
                 ? processedLatex.processedContent
                 : message.content;
-            
+
             // The rest of dataset handling logic remains the same
             const parts: ContentPart[] = [];
             let lastIndex = 0;
-            
+
             // Process each dataset placeholder
             datasets.forEach((dataset, index) => {
-                const placeholderStart = processedContent.indexOf(dataset.fullMatch || '', lastIndex);
+                const placeholderStart = processedContent.indexOf(
+                    dataset.fullMatch || "",
+                    lastIndex
+                );
                 if (placeholderStart !== -1) {
                     // Add text content before the dataset
                     if (placeholderStart > lastIndex) {
                         parts.push({
-                            type: 'text',
-                            content: processedContent.substring(lastIndex, placeholderStart)
+                            type: "text",
+                            content: processedContent.substring(
+                                lastIndex,
+                                placeholderStart
+                            ),
                         });
                     }
                     // Add the dataset
-                    parts.push({ type: 'dataset', index });
-                    lastIndex = placeholderStart + (dataset.fullMatch?.length || 0);
+                    parts.push({ type: "dataset", index });
+                    lastIndex =
+                        placeholderStart + (dataset.fullMatch?.length || 0);
                 }
             });
-            
+
             // Add any remaining text
             if (lastIndex < processedContent.length) {
                 parts.push({
-                    type: 'text',
-                    content: processedContent.substring(lastIndex)
+                    type: "text",
+                    content: processedContent.substring(lastIndex),
                 });
             }
-            
+
             // Render the parts
             return (
                 <>
                     {parts.map((part, index) => {
-                        if (part.type === 'text') {
+                        if (part.type === "text") {
                             return part.content?.trim() ? (
                                 <div key={`text-${index}`}>
                                     <ReactMarkdown
@@ -484,7 +694,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                                     </ReactMarkdown>
                                 </div>
                             ) : null;
-                        } else if (part.type === 'dataset') {
+                        } else if (part.type === "dataset") {
                             const dataset = datasets[part.index];
                             return (
                                 <DatasetPreview
@@ -501,7 +711,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                 </>
             );
         }
-        
+
         // If content has LaTeX, use the processed content
         if (processedLatex.hasLatex) {
             return (
@@ -514,7 +724,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                 </ReactMarkdown>
             );
         }
-        
+
         // Otherwise, render content normally
         return (
             <ReactMarkdown
@@ -529,7 +739,9 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
 
     return (
         <div
-            className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"} mb-6`}
+            className={`flex gap-3 ${
+                isUser ? "justify-end" : "justify-start"
+            } mb-6`}
         >
             {/* {!isUser && (
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 mt-1">
@@ -550,38 +762,44 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                         title="Copy to clipboard"
                     >
                         <div className="bg-gray-200 dark:bg-gray-700 rounded-full p-1.5 shadow-lg">
-                        {isCopied ? (
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                   className="h-4 w-4 text-green-500"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                            >
-                                <path
-                                    fillRule="evenodd"
-                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                    clipRule="evenodd"
-                                />
-                            </svg>
-                        ) : (
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                   className="h-4 w-4 text-gray-500 dark:text-gray-300"
-                                   viewBox="0 0 20 20"
-                                   fill="currentColor"
-                            >
-                                   <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
-                                   <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
-                            </svg>
-                        )}
+                            {isCopied ? (
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-4 w-4 text-green-500"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                >
+                                    <path
+                                        fillRule="evenodd"
+                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                        clipRule="evenodd"
+                                    />
+                                </svg>
+                            ) : (
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-4 w-4 text-gray-500 dark:text-gray-300"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                >
+                                    <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
+                                    <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+                                </svg>
+                            )}
                         </div>
                     </button>
                 )}
                 {isUser && renderUploadedFiles()}
-                <div className={`text-base markdown-content ${!isUser ? "prose prose-base dark:prose-invert max-w-none" : ""}`}>
+                <div
+                    className={`text-base markdown-content ${
+                        !isUser
+                            ? "prose prose-base dark:prose-invert max-w-none"
+                            : ""
+                    }`}
+                >
                     <ProcessedContent />
                 </div>
-                
+
                 {/* Add the context menu for code blocks */}
                 {activeCodeBlock && (
                     <CodeBlockMenu
@@ -601,6 +819,6 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
 });
 
 // Add display name for debugging
-ChatMessage.displayName = 'ChatMessage';
+ChatMessage.displayName = "ChatMessage";
 
 export default ChatMessage;
