@@ -29,6 +29,13 @@ When using mathematical expressions, follow these strict guidelines:
   - \\text{sin}(x) instead of sin(x)
   - \\text{cos}(x) instead of cos(x)
   - \\text{tan}(x) instead of tan(x)
+  - \\text{sec}(x) instead of sec(x)
+  - \\text{csc}(x) instead of csc(x)
+  - \\text{cot}(x) instead of cot(x)
+
+- For trigonometric function definitions, always use inline math with $ symbols:
+  Example: Cosecant (csc) is the reciprocal of sine: $\\text{csc}(\\theta) = \\frac{1}{\\sin(\\theta)}$
+
 - For tables and arrays, use the following format:
   - $$\\begin{array}{|c|c|c|} \\hline ... content ... \\hline \\end{array}$$
   - Ensure all rows have the same number of columns

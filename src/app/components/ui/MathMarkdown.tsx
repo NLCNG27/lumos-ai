@@ -12,29 +12,81 @@ interface MathMarkdownProps {
   className?: string;
 }
 
+// Function to fix common mathematical notation problems
+const fixMathNotation = (text: string): string => {
+  if (!text) return '';
+  let processed = text;
+  
+  // First, fix specific trigonometric definitions that might be problematic
+  const definitionPatterns = [
+    {
+      regex: /Cosecant \(csc\) is the reciprocal of sine:.*?(\)|$)/g,
+      replacement: 'Cosecant (csc) is the reciprocal of sine: $\\text{csc}(\\theta) = \\frac{1}{\\sin(\\theta)}$'
+    },
+    {
+      regex: /Secant \(sec\) is the reciprocal of cosine:.*?(\)|$)/g,
+      replacement: 'Secant (sec) is the reciprocal of cosine: $\\text{sec}(\\theta) = \\frac{1}{\\cos(\\theta)}$'
+    },
+    {
+      regex: /Cotangent \(cot\) is the reciprocal of tangent:.*?(\)|$)/g,
+      replacement: 'Cotangent (cot) is the reciprocal of tangent: $\\text{cot}(\\theta) = \\frac{1}{\\tan(\\theta)}$'
+    }
+  ];
+  
+  // Apply each definition pattern
+  for (const pattern of definitionPatterns) {
+    processed = processed.replace(pattern.regex, pattern.replacement);
+  }
+  
+  // Fix math expressions that are between parentheses but should be in $ delimiters
+  processed = processed.replace(
+    /\(\\(text|mathrm)\{([a-z]+)\}\(([^)]+)\) = ([^)]+)\)/g, 
+    '$\\$1{$2}($3) = $4$'
+  );
+  
+  // Process math within existing $ delimiters to ensure functions are properly marked
+  const mathDelimiters = [
+    { start: '$$', end: '$$' },
+    { start: '$', end: '$' }
+  ];
+  
+  for (const delimiter of mathDelimiters) {
+    const regex = new RegExp(`${delimiter.start}(.*?)${delimiter.end}`, 'g');
+    processed = processed.replace(regex, (match, content) => {
+      // Process trig functions within the math content
+      let newContent = content;
+      
+      // List of all trigonometric functions to check
+      const trigFunctions = [
+        'sin', 'cos', 'tan', 'csc', 'sec', 'cot',
+        'arcsin', 'arccos', 'arctan', 'arcsec', 'arccsc', 'arccot'
+      ];
+      
+      // Add \text{} around each function if not already present
+      for (const func of trigFunctions) {
+        // Only match the function if it's followed by an opening parenthesis
+        // and not already wrapped in \text{} or \mathrm{}
+        const funcPattern = new RegExp(`(?<![a-zA-Z\\\\])${func}(?=\\()`, 'g');
+        newContent = newContent.replace(funcPattern, `\\text{${func}}`);
+      }
+      
+      // Fix fractions
+      newContent = newContent.replace(/\\frac(\w)(\w)/g, '\\frac{$1}{$2}');
+      
+      return `${delimiter.start}${newContent}${delimiter.end}`;
+    });
+  }
+  
+  return processed;
+};
+
 const MathMarkdown: React.FC<MathMarkdownProps> = ({ children, className = "" }) => {
-  // Handle the case where a full LaTeX table is provided
-  // We need to detect full LaTeX tables and handle them specially
-  const [content, setContent] = useState<string>(children || "");
+  const [content, setContent] = useState<string>("");
   
   useEffect(() => {
-    // Simple preprocessor to add \text{} around function names
     if (children) {
-      let processed = children;
-      
-      // Simplify: remove any manual escaping of backslashes that might cause problems
-      processed = processed.replace(/\\\\([a-zA-Z])/g, '\\$1');
-      
-      // Replace instances like \line with \\line to fix common issues
-      processed = processed.replace(/\\line/g, '\\\\line');
-      
-      // Add \text{} around trig function names that aren't already wrapped
-      const trigFuncs = ['sin', 'cos', 'tan', 'csc', 'sec', 'cot', 'arcsin', 'arccos', 'arctan', 'arcsec', 'arccsc', 'arccot'];
-      trigFuncs.forEach(func => {
-        const regex = new RegExp(`\\\\${func}\\(`, 'g');
-        processed = processed.replace(regex, `\\\\text{${func}}(`);
-      });
-      
+      // Apply all fixes to the content
+      const processed = fixMathNotation(children);
       setContent(processed);
     }
   }, [children]);
@@ -48,10 +100,11 @@ const MathMarkdown: React.FC<MathMarkdownProps> = ({ children, className = "" })
             throwOnError: false,
             strict: false,
             output: 'html',
-            trust: true, // Important for complex expressions
+            trust: true,
+            displayMode: false,
             fleqn: false,
-            // Macros for common functions
             macros: {
+              // Add custom macros for trig functions
               "\\arcsec": "\\text{arcsec}",
               "\\arccsc": "\\text{arccsc}",
               "\\arccot": "\\text{arccot}",
