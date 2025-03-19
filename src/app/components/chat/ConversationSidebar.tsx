@@ -73,6 +73,67 @@ export default function ConversationSidebar({
   const [conversationToDelete, setConversationToDelete] = useState<Conversation | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // Helper function to get the message count for a conversation
+  const getMessageCount = async (conversationId: string): Promise<number> => {
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}/messages`);
+      if (!response.ok) {
+        console.error(`Error fetching messages: ${response.status}`);
+        return 0;
+      }
+      
+      const data = await response.json();
+      return data.messages?.length || 0;
+    } catch (error) {
+      console.error('Error checking message count:', error);
+      return 0;
+    }
+  };
+
+  // Enhanced function to check if a conversation truly has no messages
+  const isConversationEmpty = async (conversationId: string): Promise<boolean> => {
+    const messageCount = await getMessageCount(conversationId);
+    console.log(`Conversation ${conversationId} has ${messageCount} messages`);
+    return messageCount === 0;
+  };
+
+  // Helper function to check if there's an empty new conversation
+  const hasEmptyNewConversation = () => {
+    const hasEmpty = conversations.some(conv => {
+      // Empty conversation check:
+      // 1. Has the default title "New Conversation"
+      const hasDefaultTitle = conv.title === "New Conversation";
+      
+      // 2. Check if the timestamps indicate no messages have been added
+      // This handles both when last_message_at is null and when it equals created_at
+      const hasNoMessages = 
+        !conv.last_message_at || 
+        (conv.created_at && conv.last_message_at && 
+          new Date(conv.last_message_at).getTime() === new Date(conv.created_at).getTime());
+      
+      return hasDefaultTitle && hasNoMessages;
+    });
+    
+    console.log("Has empty conversation:", hasEmpty);
+    return hasEmpty;
+  };
+
+  // Find an empty new conversation
+  const findEmptyNewConversation = () => {
+    const emptyConv = conversations.find(conv => {
+      const hasDefaultTitle = conv.title === "New Conversation";
+      const hasNoMessages = 
+        !conv.last_message_at || 
+        (conv.created_at && conv.last_message_at && 
+          new Date(conv.last_message_at).getTime() === new Date(conv.created_at).getTime());
+      
+      return hasDefaultTitle && hasNoMessages;
+    });
+    
+    console.log("Found empty conversation:", emptyConv);
+    return emptyConv;
+  };
+
   // Close menu when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -110,6 +171,28 @@ export default function ConversationSidebar({
   const createNewConversation = async () => {
     setLoading(true);
     try {
+      // Always refresh conversations first to get the latest state
+      await fetchConversations();
+      
+      // Check for empty conversations after refresh
+      const existingNewConversation = findEmptyNewConversation();
+      
+      if (existingNewConversation) {
+        console.log("Found empty conversation after refresh, using it:", existingNewConversation.id);
+        // If exists, just select it instead of creating a new one
+        onSelectConversation(existingNewConversation.id);
+        
+        // Update URL with the existing conversation ID
+        const url = new URL(window.location.href);
+        url.searchParams.set("conversation", existingNewConversation.id);
+        window.history.pushState({}, "", url);
+        
+        setLoading(false);
+        return existingNewConversation;
+      }
+      
+      console.log("Creating new conversation");
+      // Otherwise, create a new conversation
       const response = await fetch("/api/conversations", {
         method: "POST",
         headers: {
@@ -123,6 +206,7 @@ export default function ConversationSidebar({
       }
       
       const data = await response.json();
+      console.log("New conversation created:", data.conversation);
       
       // Refresh the conversation list
       await fetchConversations();
@@ -255,6 +339,49 @@ export default function ConversationSidebar({
     }
   };
 
+  // Create a new conversation button handler
+  const handleNewChatClick = async () => {
+    if (loading) return;
+    
+    setLoading(true);
+    try {
+      // Find conversations that look empty based on their metadata
+      const potentialEmptyConversations = conversations.filter(conv => 
+        conv.title === "New Conversation" && 
+        (!conv.last_message_at || 
+          (conv.created_at && conv.last_message_at && 
+            new Date(conv.last_message_at).getTime() === new Date(conv.created_at).getTime()))
+      );
+      
+      console.log("Potential empty conversations:", potentialEmptyConversations);
+      
+      // Check if any of these are actually empty (no messages)
+      for (const conv of potentialEmptyConversations) {
+        const isEmpty = await isConversationEmpty(conv.id);
+        if (isEmpty) {
+          console.log(`Found truly empty conversation: ${conv.id}`);
+          onSelectConversation(conv.id);
+          
+          // Update URL
+          const url = new URL(window.location.href);
+          url.searchParams.set("conversation", conv.id);
+          window.history.pushState({}, "", url);
+          
+          return;
+        }
+      }
+      
+      // If we get here, no empty conversations were found, so create a new one
+      console.log("No empty conversations found, creating a new one");
+      await createNewConversation();
+      
+    } catch (error) {
+      console.error("Error in handleNewChatClick:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Load conversations on initial render
   useEffect(() => {
     fetchConversations();
@@ -277,8 +404,8 @@ export default function ConversationSidebar({
       <div className="w-64 h-full bg-gray-950 border-r border-gray-800 flex flex-col">
         <div className="p-4 border-b border-gray-800">
           <button 
-            onClick={createNewConversation}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded flex items-center justify-center"
+            onClick={handleNewChatClick}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded flex items-center justify-center transition-colors"
             disabled={loading}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">

@@ -11,93 +11,8 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
     const [error, setError] = useState<string | null>(null);
     const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
 
-    // Load an existing conversation or create a new one
-    useEffect(() => {
-        const initializeConversation = async () => {
-            try {
-                setIsLoading(true);
-                
-                if (initialConversationId) {
-                    // Load the specified conversation
-                    await loadConversation(initialConversationId);
-                } else {
-                    // Check if user has existing conversations
-                    const response = await fetch("/api/conversations");
-                    if (!response.ok) {
-                        throw new Error(`Error: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    const existingConversations = data.conversations || [];
-                    
-                    if (existingConversations.length > 0) {
-                        // Load the most recent conversation
-                        const mostRecentConversation = existingConversations[0]; // API returns conversations sorted by last_message_at desc
-                        await loadConversation(mostRecentConversation.id);
-                    } else {
-                        // Create a new conversation only if user has no conversations
-                        await createNewConversation();
-                    }
-                }
-            } catch (err) {
-                console.error("Error initializing conversation:", err);
-                setError(
-                    err instanceof Error
-                        ? err.message
-                        : "Failed to initialize conversation"
-                );
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        initializeConversation();
-    }, [initialConversationId]);
-
-    // Load an existing conversation and its messages
-    const loadConversation = async (conversationId: string) => {
-        setIsLoading(true);
-        try {
-            // Fetch conversation details
-            const conversationResponse = await fetch(`/api/conversations/${conversationId}`);
-            
-            if (!conversationResponse.ok) {
-                console.error(`Error loading conversation: ${conversationResponse.status}`);
-                
-                // If conversation not found, create a new one instead
-                if (conversationResponse.status === 404) {
-                    console.log("Conversation not found, creating a new one");
-                    await createNewConversation();
-                    return;
-                }
-                
-                throw new Error(`Error: ${conversationResponse.status}`);
-            }
-            
-            const conversationData = await conversationResponse.json();
-            setCurrentConversation(conversationData.conversation);
-
-            // Fetch conversation messages
-            const messagesResponse = await fetch(`/api/conversations/${conversationId}/messages`);
-            if (!messagesResponse.ok) {
-                console.error(`Error loading messages: ${messagesResponse.status}`);
-                // Continue even if messages can't be loaded
-                setMessages([]);
-            } else {
-                const messagesData = await messagesResponse.json();
-                setMessages(messagesData.messages || []);
-            }
-        } catch (err) {
-            console.error("Error loading conversation:", err);
-            // If there's an error loading the conversation, create a new one
-            await createNewConversation();
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     // Create a new conversation
-    const createNewConversation = async () => {
+    const createNewConversation = useCallback(async () => {
         setIsLoading(true);
         try {
             const response = await fetch("/api/conversations", {
@@ -119,7 +34,113 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, []);
+
+    // Load an existing conversation and its messages
+    const loadConversation = useCallback(async (conversationId: string) => {
+        setIsLoading(true);
+        try {
+            // Fetch conversation details
+            const conversationResponse = await fetch(`/api/conversations/${conversationId}`);
+            
+            if (!conversationResponse.ok) {
+                // Handle different error types based on status code
+                if (conversationResponse.status === 404) {
+                    throw new Error("Conversation not found");
+                } else if (conversationResponse.status === 403) {
+                    throw new Error("You don't have permission to access this conversation");
+                } else {
+                    throw new Error(`Error loading conversation: ${conversationResponse.status}`);
+                }
+            }
+            
+            const conversationData = await conversationResponse.json();
+            
+            // Validate conversation data
+            if (!conversationData || !conversationData.conversation) {
+                throw new Error("Invalid conversation data received");
+            }
+            
+            setCurrentConversation(conversationData.conversation);
+
+            // Fetch conversation messages
+            const messagesResponse = await fetch(`/api/conversations/${conversationId}/messages`);
+            if (!messagesResponse.ok) {
+                console.error(`Error loading messages: ${messagesResponse.status}`);
+                // Continue even if messages can't be loaded
+                setMessages([]);
+                // Don't throw here to avoid triggering the catch block
+            } else {
+                const messagesData = await messagesResponse.json();
+                setMessages(messagesData.messages || []);
+            }
+        } catch (err) {
+            console.error("Error loading conversation:", err);
+            // Rethrow the error so the caller can handle it
+            throw err;
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
+
+    // Load an existing conversation or create a new one
+    useEffect(() => {
+        const initializeConversation = async () => {
+            try {
+                setIsLoading(true);
+                
+                if (initialConversationId) {
+                    try {
+                        // Load the specified conversation
+                        await loadConversation(initialConversationId);
+                    } catch (err) {
+                        console.error("Failed to load initial conversation:", err);
+                        // If loading the specified conversation fails, create a new one
+                        await createNewConversation();
+                    }
+                } else {
+                    // Check if user has existing conversations
+                    const response = await fetch("/api/conversations");
+                    if (!response.ok) {
+                        throw new Error(`Error: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    const existingConversations = data.conversations || [];
+                    
+                    if (existingConversations.length > 0) {
+                        try {
+                            // Load the most recent conversation
+                            const mostRecentConversation = existingConversations[0]; // API returns conversations sorted by last_message_at desc
+                            await loadConversation(mostRecentConversation.id);
+                        } catch (err) {
+                            console.error("Failed to load most recent conversation:", err);
+                            // If loading the most recent conversation fails, create a new one
+                            await createNewConversation();
+                        }
+                    } else {
+                        // Create a new conversation only if user has no conversations
+                        await createNewConversation();
+                    }
+                }
+            } catch (err) {
+                console.error("Error initializing conversation:", err);
+                setError(
+                    err instanceof Error
+                        ? err.message
+                        : "Failed to initialize conversation"
+                );
+                // Ensure we at least try to create a new conversation
+                await createNewConversation().catch(e => {
+                    console.error("Critical error: Failed to create new conversation:", e);
+                });
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        initializeConversation();
+    }, [initialConversationId, loadConversation, createNewConversation]);
 
     // Save message to the conversation in Supabase
     const saveMessageToConversation = async (message: Message) => {
