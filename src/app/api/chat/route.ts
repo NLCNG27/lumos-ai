@@ -1,4 +1,5 @@
-import { openai, DEFAULT_SYSTEM_MESSAGE } from "@/app/lib/openai";
+import { DEFAULT_SYSTEM_MESSAGE } from "@/app/lib/gemini";
+import { GEMINI_MODELS, generateGeminiResponse, callGeminiWithTimeout, generateMultimodalResponse } from "@/app/lib/gemini";
 import { NextResponse } from "next/server";
 // Add child_process for advanced PDF extraction fallback
 import { exec } from "child_process";
@@ -31,7 +32,7 @@ import { generateRandomDataset } from "@/app/lib/datasetGenerator";
 // Import the conversation service for saving messages
 import { saveMessageToConversation } from "@/app/lib/conversation-service";
 
-// Add a simple in-memory cache for OpenAI responses
+// Add a simple in-memory cache for Gemini responses
 const CACHE_TTL = 1000 * 60 * 60; // 1 hour in milliseconds
 type CacheEntry = {
     response: any;
@@ -776,11 +777,11 @@ export async function POST(req: Request) {
                 // Use a vision-capable model
                 try {
                     console.log(
-                        "Using vision-capable model for processing images/PDFs"
+                        "Using gemini-2.0-flash for processing images/PDFs"
                     );
                     
                     // Generate cache key for vision model requests
-                    const cacheKey = generateCacheKey(formattedMessages as any, "gpt-4o");
+                    const cacheKey = generateCacheKey(formattedMessages as any, GEMINI_MODELS.GEMINI_FLASH);
                     const cachedEntry = responseCache.get(cacheKey);
                     
                     // Use cached response if available and valid
@@ -794,13 +795,15 @@ export async function POST(req: Request) {
                     }
                     
                     // If no cache hit, make the API call
-                    console.log("Making vision model API call with timeout");
-                    const response = await callOpenAIWithTimeout(
+                    console.log("Making multimodal API call with gemini-2.0-flash");
+                    
+                    // Use the multimodal function with the flash model for handling images
+                    const response = await generateMultimodalResponse(
                         formattedMessages as any,
-                        "gpt-4o",
+                        GEMINI_MODELS.GEMINI_FLASH,
                         0.7,
                         1500
-                    ) as any; // Type assertion
+                    ) as any;
                     
                     // Cache the response
                     responseCache.set(cacheKey, {
@@ -821,7 +824,7 @@ export async function POST(req: Request) {
                             process.env.NODE_ENV === "development"
                                 ? {
                                       pdfStats,
-                                      modelUsed: "gpt-4o",
+                                      modelUsed: GEMINI_MODELS.GEMINI_FLASH,
                                   }
                                 : undefined,
                     });
@@ -839,14 +842,33 @@ export async function POST(req: Request) {
                         };
                     });
 
-                    // Fall back to regular model if vision fails
+                    // Use a simpler model with shorter outputs but still use the flash model
+                    const fallbackModel = GEMINI_MODELS.GEMINI_FLASH;
+                    
+                    // If the error is a timeout or rate limit, use a simpler model
+                    if (error instanceof Error && 
+                        (error.message.includes('timeout') || 
+                         error.message.includes('rate limit') ||
+                         error.message.includes('429'))) {
+                        console.log('Falling back after timeout or rate limit, but still using gemini-2.0-flash');
+                        
+                        // Still use the flash model but with reduced token count
+                        return await generateGeminiResponse(
+                            fallbackMessages as any,
+                            GEMINI_MODELS.GEMINI_FLASH,
+                            0.7,
+                            500 // Limit token count for fallback
+                        );
+                    }
+                    
+                    // Fall back to regular model if multimodal processing fails
                     const fallbackResponse =
-                        await openai.chat.completions.create({
-                            model: "gpt-4o-mini",
-                            messages: fallbackMessages as any, // Type assertion
-                            temperature: 0.7,
-                            max_tokens: 1500,
-                        });
+                        await callModelWithTimeout(
+                            fallbackMessages as any,
+                            fallbackModel,
+                            0.7,
+                            1500
+                        ) as any; // Type assertion
 
                     // Add detailed PDF metrics to response if we processed PDFs
                     return NextResponse.json(
@@ -857,7 +879,7 @@ export async function POST(req: Request) {
                                       process.env.NODE_ENV === "development"
                                           ? {
                                                 pdfStats,
-                                                modelUsed: "gpt-4o-mini",
+                                                modelUsed: fallbackModel,
                                             }
                                           : undefined,
                               }
@@ -866,12 +888,12 @@ export async function POST(req: Request) {
                 }
             } else {
                 // If we only have PDFs, use the standard text model
-                const response = await openai.chat.completions.create({
-                    model: "gpt-4o-mini",
-                    messages: formattedMessages as any, // Type assertion
-                    temperature: 0.7,
-                    max_tokens: 1500,
-                });
+                const response = await callModelWithTimeout(
+                    formattedMessages as any,
+                    GEMINI_MODELS.GEMINI_FLASH,
+                    0.7,
+                    1500
+                ) as any; // Type assertion
 
                 // Log PDF stats
                 console.log(
@@ -879,9 +901,9 @@ export async function POST(req: Request) {
                     JSON.stringify(pdfStats, null, 2)
                 );
 
-                // Log information about the messages sent to OpenAI
+                // Log information about the messages sent to Gemini
                 console.log(
-                    "Messages sent to OpenAI:",
+                    "Messages sent to Gemini:",
                     formattedMessages.map((msg) => ({
                         role: msg.role,
                         contentType: typeof msg.content,
@@ -903,7 +925,7 @@ export async function POST(req: Request) {
                         process.env.NODE_ENV === "development"
                             ? {
                                   pdfStats,
-                                  modelUsed: "gpt-4o-mini",
+                                  modelUsed: GEMINI_MODELS.GEMINI_FLASH,
                                   note: "Used text model because no valid images were found",
                               }
                             : undefined,
@@ -913,16 +935,16 @@ export async function POST(req: Request) {
             // Standard text processing
             try {
                 console.log("Using standard text processing with timeout");
-                const response = await callOpenAIWithTimeout(
+                const response = await callModelWithTimeout(
                     formattedMessages as any,
-                    "gpt-4o-mini",
+                    GEMINI_MODELS.GEMINI_FLASH,
                     0.7,
                     1500
                 ) as any; // Type assertion
 
-                // Log information about the messages sent to OpenAI
+                // Log information about the messages sent to Gemini
                 console.log(
-                    "Messages sent to OpenAI:",
+                    "Messages sent to Gemini:",
                     formattedMessages.map((msg) => ({
                         role: msg.role,
                         contentType: typeof msg.content,
@@ -946,7 +968,7 @@ export async function POST(req: Request) {
                                   process.env.NODE_ENV === "development"
                                       ? {
                                             pdfStats,
-                                            modelUsed: "gpt-4o-mini",
+                                            modelUsed: GEMINI_MODELS.GEMINI_FLASH,
                                         }
                                       : undefined,
                           }
@@ -1156,7 +1178,7 @@ You can download this file using the download button above.`;
         ];
 
         // Check if we have a cached response
-        const cacheKey = generateCacheKey(apiMessages, "gpt-4-turbo");
+        const cacheKey = generateCacheKey(apiMessages, GEMINI_MODELS.GEMINI_FLASH);
         const cachedEntry = responseCache.get(cacheKey);
         
         if (cachedEntry && isCacheValid(cachedEntry)) {
@@ -1165,12 +1187,12 @@ You can download this file using the download button above.`;
         }
 
         // If no cache hit, make the API call
-        const response = await openai.chat.completions.create({
-            model: "gpt-4-turbo",
-            messages: apiMessages as any, // Type assertion
-            temperature: 0.7,
-            stream: false,
-        });
+        const response = await callModelWithTimeout(
+            apiMessages as any,
+            GEMINI_MODELS.GEMINI_FLASH,
+            0.7,
+            1500
+        ) as any; // Type assertion
 
         // Cache the response
         responseCache.set(cacheKey, {
@@ -1180,7 +1202,7 @@ You can download this file using the download button above.`;
 
         return NextResponse.json(response);
     } catch (error) {
-        console.error("Error calling OpenAI:", error);
+        console.error("Error calling Gemini API:", error);
         return NextResponse.json(
             {
                 error: "Failed to communicate with AI. Please try again.",
@@ -1697,48 +1719,46 @@ async function createPdfPlaceholderImage(filename: string): Promise<string> {
     }
 }
 
-// Add a helper function to call OpenAI with timeout
-async function callOpenAIWithTimeout(messages: any[], model: string, temperature: number = 0.7, maxTokens?: number) {
+// Add a helper function to call Gemini with timeout
+async function callModelWithTimeout(messages: any[], model: string, temperature: number = 0.7, maxTokens?: number): Promise<any> {
     // Create a timeout promise
     const timeoutPromise = new Promise((_, reject) => {
         const id = setTimeout(() => {
             clearTimeout(id);
-            reject(new Error(`OpenAI API call timed out after 60 seconds`));
+            reject(new Error(`Gemini API call timed out after 60 seconds`));
         }, 60000); // 60 second timeout
     });
 
     try {
         // Race between the API call and the timeout
-        const response = await Promise.race([
-            openai.chat.completions.create({
-                model: model,
-                messages: messages as any,
-                temperature: temperature,
-                max_tokens: maxTokens,
-            }),
+        const response: any = await Promise.race([
+            generateGeminiResponse(
+                messages as any,
+                model,
+                temperature,
+                maxTokens
+            ),
             timeoutPromise
         ]);
         
         return response;
     } catch (error) {
-        console.error(`OpenAI API call failed (model: ${model}):`, error);
+        console.error(`Gemini API call failed (model: ${model}):`, error);
         
         // If the error is a timeout or rate limit, use a simpler model
         if (error instanceof Error && 
             (error.message.includes('timeout') || 
              error.message.includes('rate limit') ||
              error.message.includes('429'))) {
-            console.log('Falling back to simpler model due to timeout or rate limit');
+            console.log('Falling back after timeout or rate limit, but still using gemini-2.0-flash');
             
-            // Use a simpler model with shorter outputs
-            const fallbackModel = model.includes('gpt-4') ? 'gpt-3.5-turbo' : 'gpt-3.5-turbo';
-            
-            return await openai.chat.completions.create({
-                model: fallbackModel,
-                messages: messages as any,
-                temperature: temperature,
-                max_tokens: maxTokens || 500, // Limit token count for fallback
-            });
+            // Still use the flash model but with reduced token count
+            return await generateGeminiResponse(
+                messages as any,
+                GEMINI_MODELS.GEMINI_FLASH,
+                temperature,
+                maxTokens || 500 // Limit token count for fallback
+            );
         }
         
         throw error; // Re-throw if it's not a timeout

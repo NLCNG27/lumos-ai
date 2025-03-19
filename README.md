@@ -1,22 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lumos AI
+
+Lumos AI is a helpful assistant that can analyze various types of files including documents, images, and data files.
+
+## Features
+
+- Text conversations with AI
+- File analysis (PDF, Word, Excel, PowerPoint, images, code)
+- RAG (Retrieval Augmented Generation) for document intelligence
+- Mathematical expression support with LaTeX
+- Dataset generation
+- And more!
+
+## AI Models
+
+Lumos AI uses Google's Gemini models for its AI functionality:
+
+- **Gemini 2.0 Flash** - Main model for fast, efficient text processing
+- **Gemini Pro Vision** - For processing images and visual content
+- **Gemini Pro** - Alternative model for fallback
+
+Previously, Lumos used OpenAI's models (GPT-4o, GPT-4o-mini), but has been migrated to Gemini for improved performance and cost efficiency.
+
+## Environment Setup
+
+You'll need to set up the following environment variables:
+
+```
+# Gemini API Key
+GEMINI_API_KEY=your_gemini_api_key
+
+# Clerk (Authentication)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
+CLERK_SECRET_KEY=your_clerk_secret_key
+
+# Supabase (Database)
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+```
 
 ## Getting Started
 
-First, run the development server:
+1. Clone the repository
+2. Install dependencies:
+   ```
+   npm install
+   ```
+3. Set up environment variables (see above)
+4. Run the development server:
+   ```
+   npm run dev
+   ```
+5. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Additional Information
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Lumos AI supports multimodal inputs (text + images)
+- PDF processing capabilities for document analysis
+- Math expression rendering using LaTeX
+- Code analysis and explanation
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 

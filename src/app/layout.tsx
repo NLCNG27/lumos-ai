@@ -44,14 +44,14 @@ export default function RootLayout({
             <head>
                 {/* Add preconnect for external resources */}
                 <link rel="preconnect" href="https://clerk.lumos-ai.com" />
-                <link rel="preconnect" href="https://api.openai.com" />
+                <link rel="preconnect" href="https://generativelanguage.googleapis.com" />
                 
                 {/* Add preload for critical CSS */}
                 <link rel="preload" href="/globals.css" as="style" />
                 
                 {/* Add DNS prefetch */}
                 <link rel="dns-prefetch" href="https://clerk.lumos-ai.com" />
-                <link rel="dns-prefetch" href="https://api.openai.com" />
+                <link rel="dns-prefetch" href="https://generativelanguage.googleapis.com" />
             </head>
             <body className={`${geistSans.className} antialiased`}>
                 <ClerkProvider>
