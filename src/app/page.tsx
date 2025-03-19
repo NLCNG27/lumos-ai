@@ -58,7 +58,7 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
                         </h2>
                         <p className="text-gray-300 mb-6">
                             Please sign in or create an account to start
-                            chatting with Lumos AI Assistant.
+                            chatting with Lumos.
                         </p>
                     </div>
                 </div>
