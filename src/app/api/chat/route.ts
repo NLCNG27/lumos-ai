@@ -817,17 +817,8 @@ export async function POST(req: Request) {
                         JSON.stringify(pdfStats, null, 2)
                     );
 
-                    // Add detailed PDF metrics to response
-                    return NextResponse.json({
-                        ...response.choices[0].message,
-                        __debug:
-                            process.env.NODE_ENV === "development"
-                                ? {
-                                      pdfStats,
-                                      modelUsed: GEMINI_MODELS.GEMINI_FLASH,
-                                  }
-                                : undefined,
-                    });
+                    // Return the multimodal response with NextResponse
+                    return NextResponse.json(response.choices[0].message);
                 } catch (error) {
                     console.error("Error with vision model:", error);
 
@@ -853,36 +844,38 @@ export async function POST(req: Request) {
                         console.log('Falling back after timeout or rate limit, but still using gemini-2.0-flash');
                         
                         // Still use the flash model but with reduced token count
-                        return await generateGeminiResponse(
-                            fallbackMessages as any,
-                            GEMINI_MODELS.GEMINI_FLASH,
-                            0.7,
-                            500 // Limit token count for fallback
-                        );
+                        return NextResponse.json({
+                            role: 'assistant',
+                            content: await generateGeminiResponse(
+                                fallbackMessages as any,
+                                GEMINI_MODELS.GEMINI_FLASH,
+                                0.7,
+                                500 // Limit token count for fallback
+                            ).then(res => res.choices[0].message.content)
+                        });
                     }
                     
                     // Fall back to regular model if multimodal processing fails
-                    const fallbackResponse =
-                        await callModelWithTimeout(
-                            fallbackMessages as any,
-                            fallbackModel,
-                            0.7,
-                            1500
-                        ) as any; // Type assertion
+                    const fallbackResponse = await callModelWithTimeout(
+                        fallbackMessages as any,
+                        fallbackModel,
+                        0.7,
+                        1500
+                    ) as any; // Type assertion
 
                     // Add detailed PDF metrics to response if we processed PDFs
                     return NextResponse.json(
                         pdfStats.totalCount > 0
                             ? {
-                                  ...fallbackResponse.choices[0].message,
-                                  __debug:
-                                      process.env.NODE_ENV === "development"
-                                          ? {
-                                                pdfStats,
-                                                modelUsed: fallbackModel,
-                                            }
-                                          : undefined,
-                              }
+                                ...fallbackResponse.choices[0].message,
+                                __debug:
+                                    process.env.NODE_ENV === "development"
+                                        ? {
+                                            pdfStats,
+                                            modelUsed: fallbackModel,
+                                        }
+                                        : undefined,
+                            }
                             : fallbackResponse.choices[0].message
                     );
                 }
@@ -919,17 +912,21 @@ export async function POST(req: Request) {
                 );
 
                 // Add detailed PDF metrics to response
-                return NextResponse.json({
-                    ...response.choices[0].message,
-                    __debug:
-                        process.env.NODE_ENV === "development"
-                            ? {
-                                  pdfStats,
-                                  modelUsed: GEMINI_MODELS.GEMINI_FLASH,
-                                  note: "Used text model because no valid images were found",
-                              }
-                            : undefined,
-                });
+                return NextResponse.json(
+                    pdfStats.totalCount > 0
+                        ? {
+                              ...response.choices[0].message,
+                              __debug:
+                                  process.env.NODE_ENV === "development"
+                                      ? {
+                                            pdfStats,
+                                            modelUsed: GEMINI_MODELS.GEMINI_FLASH,
+                                            note: "Used text model because no valid images were found",
+                                        }
+                                      : undefined,
+                          }
+                        : response.choices[0].message
+                );
             }
         } else {
             // Standard text processing
@@ -1163,11 +1160,10 @@ ${dataset.content}
 
 You can download this file using the download button above.`;
 
-                // Return the response directly
-                return new Response(responseContent, {
-                    headers: {
-                        'Content-Type': 'text/plain'
-                    }
+                // Return the response using NextResponse
+                return NextResponse.json({
+                    role: 'assistant',
+                    content: responseContent
                 });
             }
         }
@@ -1200,6 +1196,7 @@ You can download this file using the download button above.`;
             timestamp: Date.now()
         });
 
+        // Ensure we return a NextResponse object
         return NextResponse.json(response);
     } catch (error) {
         console.error("Error calling Gemini API:", error);
@@ -1741,6 +1738,7 @@ async function callModelWithTimeout(messages: any[], model: string, temperature:
             timeoutPromise
         ]);
         
+        // Ensure we're returning a consistent format
         return response;
     } catch (error) {
         console.error(`Gemini API call failed (model: ${model}):`, error);
@@ -1753,12 +1751,15 @@ async function callModelWithTimeout(messages: any[], model: string, temperature:
             console.log('Falling back after timeout or rate limit, but still using gemini-2.0-flash');
             
             // Still use the flash model but with reduced token count
-            return await generateGeminiResponse(
-                messages as any,
-                GEMINI_MODELS.GEMINI_FLASH,
-                temperature,
-                maxTokens || 500 // Limit token count for fallback
-            );
+            return NextResponse.json({
+                role: 'assistant',
+                content: await generateGeminiResponse(
+                    messages as any,
+                    GEMINI_MODELS.GEMINI_FLASH,
+                    0.7,
+                    500 // Limit token count for fallback
+                ).then(res => res.choices[0].message.content)
+            });
         }
         
         throw error; // Re-throw if it's not a timeout

@@ -144,6 +144,7 @@ export async function generateGeminiResponse(
       },
     });
     
+    // Return in a format compatible with our API routes
     return {
       choices: [
         {
@@ -238,6 +239,7 @@ export async function generateMultimodalResponse(
       },
     });
     
+    // Return in a format compatible with our API routes
     return {
       choices: [
         {
