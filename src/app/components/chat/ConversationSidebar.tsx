@@ -134,9 +134,12 @@ export default function ConversationSidebar({
       const url = new URL(window.location.href);
       url.searchParams.set("conversation", data.conversation.id);
       window.history.pushState({}, "", url);
+
+      return data.conversation;
     } catch (err: any) {
       setError(err.message || "Failed to create conversation");
       console.error("Error creating conversation:", err);
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -195,9 +198,15 @@ export default function ConversationSidebar({
       // Refresh the conversation list
       await fetchConversations();
       
-      // If the deleted conversation was the current one, create a new conversation
+      // If the deleted conversation was the current one, check if any conversations are left
       if (currentConversationId === conversationToDelete.id) {
-        await createNewConversation();
+        if (conversations.length <= 1) {
+          // If this was the last conversation, create a new one
+          await createNewConversation();
+        } else {
+          // If there are other conversations, select the first one
+          onSelectConversation(conversations[0].id);
+        }
       }
       
       // Close the modal
@@ -232,10 +241,8 @@ export default function ConversationSidebar({
       // Refresh the conversations list
       await fetchConversations();
       
-      // If we deleted the current conversation, create a new one
-      if (currentConversationId && !conversations.some(c => c.id === currentConversationId)) {
-        await createNewConversation();
-      }
+      // Always create a new conversation after clearing all
+      await createNewConversation();
       
       // Close the modal
       setDeleteAllModalOpen(false);
