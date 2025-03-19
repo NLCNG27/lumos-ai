@@ -170,25 +170,69 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
         }
     };
 
+    // Generate a conversation title using AI
+    const generateConversationTitle = async (conversationId: string) => {
+        if (!conversationId) return;
+        
+        try {
+            const response = await fetch(`/api/conversations/${conversationId}/generate-title`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+            });
+            
+            if (!response.ok) {
+                console.error(`Error generating title: ${response.status}`);
+                return;
+            }
+            
+            const data = await response.json();
+            
+            // Update local state with the new title
+            if (data.title && currentConversation && currentConversation.id === conversationId) {
+                setCurrentConversation(prev => 
+                    prev ? { ...prev, title: data.title } : null
+                );
+            }
+            
+            return data.title;
+        } catch (err) {
+            console.error("Error generating conversation title:", err);
+        }
+    };
+
     // Update conversation title based on first user message
     const updateConversationTitle = async (content: string) => {
-        if (!currentConversation || messages.length > 0) return;
+        if (!currentConversation) return;
 
-        // Only update title for the first message
         try {
-            // Generate a title from the first few words of the message
-            const title = content.split(' ').slice(0, 5).join(' ') + (content.length > 30 ? '...' : '');
-            
-            await fetch(`/api/conversations/${currentConversation.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ title }),
-            });
+            // For the first message, generate a simple title from the content
+            if (messages.length === 0) {
+                // Generate a title from the first few words of the message
+                const title = content.split(' ').slice(0, 5).join(' ') + (content.length > 30 ? '...' : '');
+                
+                await fetch(`/api/conversations/${currentConversation.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ title }),
+                });
 
-            // Update local state
-            setCurrentConversation(prev => 
-                prev ? { ...prev, title } : null
-            );
+                // Update local state
+                setCurrentConversation(prev => 
+                    prev ? { ...prev, title } : null
+                );
+                
+                // If it's the first message, we'll also attempt an AI-generated title after saving
+                // this initial title as a fallback
+                setTimeout(() => {
+                    generateConversationTitle(currentConversation.id);
+                }, 500);
+            } 
+            // For later messages, only generate AI titles after certain intervals
+            // to avoid excessive API calls
+            else if (messages.length === 3 || messages.length % 10 === 0) {
+                // Only generate new titles periodically to avoid too many API calls
+                generateConversationTitle(currentConversation.id);
+            }
         } catch (err) {
             console.error("Error updating conversation title:", err);
         }
@@ -227,7 +271,7 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
             setError(null);
 
             try {
-                // Update conversation title based on first message
+                // Update conversation title based on the message
                 await updateConversationTitle(content);
 
                 // Save user message to conversation
@@ -332,6 +376,8 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
         error,
         sendMessage,
         currentConversation,
-        loadConversation
+        loadConversation,
+        createNewConversation,
+        generateConversationTitle
     };
 }

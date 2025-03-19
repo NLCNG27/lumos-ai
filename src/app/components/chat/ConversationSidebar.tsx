@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Conversation } from "@/app/types";
 import Link from "next/link";
 
@@ -71,7 +71,9 @@ export default function ConversationSidebar({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteAllModalOpen, setDeleteAllModalOpen] = useState(false);
   const [conversationToDelete, setConversationToDelete] = useState<Conversation | null>(null);
+  const [titleRefreshes, setTitleRefreshes] = useState<Record<string, boolean>>({});
   const menuRef = useRef<HTMLDivElement>(null);
+  const [lastMessageTimestamp, setLastMessageTimestamp] = useState<string | null>(null);
 
   // Helper function to get the message count for a conversation
   const getMessageCount = async (conversationId: string): Promise<number> => {
@@ -148,8 +150,48 @@ export default function ConversationSidebar({
     };
   }, []);
 
+  // Generate a title for the conversation using AI
+  const generateTitle = useCallback(async (e: React.MouseEvent, conversationId: string) => {
+    if (e) {
+      e.stopPropagation(); // Prevent opening the conversation
+      setActiveMenu(null); // Close the menu
+    }
+    
+    // Find the conversation in state
+    const conversation = conversations.find(c => c.id === conversationId);
+    if (!conversation) return;
+    
+    // Set loading state for this conversation
+    setTitleRefreshes(prev => ({ ...prev, [conversationId]: true }));
+    
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}/generate-title`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Update the conversation in local state
+      setConversations(prev => prev.map(conv => 
+        conv.id === conversationId 
+          ? { ...conv, title: data.title } 
+          : conv
+      ));
+    } catch (err) {
+      console.error("Error generating title:", err);
+    } finally {
+      // Clear loading state
+      setTitleRefreshes(prev => ({ ...prev, [conversationId]: false }));
+    }
+  }, [conversations, setActiveMenu, setTitleRefreshes, setConversations]);
+
   // Fetch user's conversations
-  const fetchConversations = async () => {
+  const fetchConversations = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -165,7 +207,7 @@ export default function ConversationSidebar({
     } finally {
       setLoading(false);
     }
-  };
+  }, [showArchived]);
 
   // Create a new conversation
   const createNewConversation = async () => {
@@ -386,18 +428,64 @@ export default function ConversationSidebar({
   useEffect(() => {
     fetchConversations();
     
-    // Refresh conversations every 30 seconds
-    const intervalId = setInterval(fetchConversations, 30000);
+    // Refresh conversations every 10 seconds instead of 30 for more real-time title updates
+    const intervalId = setInterval(fetchConversations, 10000);
     
     return () => clearInterval(intervalId);
-  }, [showArchived]);
+  }, [showArchived, fetchConversations]);
 
   // Update the conversation list when the current conversation changes
   useEffect(() => {
     if (currentConversationId) {
       fetchConversations();
     }
-  }, [currentConversationId]);
+  }, [currentConversationId, fetchConversations]);
+
+  // Listen for changes to the current conversation and update titles
+  useEffect(() => {
+    if (!currentConversationId) return;
+    
+    // If we have a current conversation, check for updates more frequently
+    const checkForUpdates = async () => {
+      try {
+        // First, check if the conversation has any new messages
+        const response = await fetch(`/api/conversations/${currentConversationId}/messages`);
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        if (!data.messages || data.messages.length === 0) return;
+        
+        // Sort messages by timestamp to get the latest
+        const sortedMessages = [...data.messages].sort((a, b) => 
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+        
+        const latestMessage = sortedMessages[0];
+        const latestTimestamp = latestMessage?.timestamp;
+        
+        // If we have a new message since last check, update the title
+        if (latestTimestamp && latestTimestamp !== lastMessageTimestamp) {
+          setLastMessageTimestamp(latestTimestamp);
+          
+          // Only generate a new title if we have at least 1 message and it's a user message
+          if (data.messages.length >= 1 && latestMessage.role === 'user') {
+            // Wait a short delay to allow the AI response to be generated first
+            setTimeout(() => {
+              generateTitle(new MouseEvent('click') as any, currentConversationId);
+            }, 1000);
+          }
+        }
+      } catch (err) {
+        console.error("Error checking for updates:", err);
+      }
+    };
+    
+    // Check immediately and then at regular intervals
+    checkForUpdates();
+    const intervalId = setInterval(checkForUpdates, 5000);
+    
+    return () => clearInterval(intervalId);
+  }, [currentConversationId, generateTitle, lastMessageTimestamp]);
 
   return (
     <>
@@ -439,7 +527,13 @@ export default function ConversationSidebar({
                       <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
                     </svg>
                     <div className="truncate flex-1">
-                      <div className="font-medium truncate">{conversation.title || "New Conversation"}</div>
+                      <div className="font-medium truncate">
+                        {titleRefreshes[conversation.id] ? (
+                          <span className="text-blue-400">Generating title...</span>
+                        ) : (
+                          conversation.title || "New Conversation"
+                        )}
+                      </div>
                       <div className="text-xs text-gray-400 truncate">
                         {new Date(conversation.last_message_at).toLocaleDateString()}
                       </div>
@@ -464,6 +558,15 @@ export default function ConversationSidebar({
                         ref={menuRef}
                         className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-10 py-1 w-36"
                       >
+                        <button 
+                          className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                          onClick={(e) => generateTitle(e, conversation.id)}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                          </svg>
+                          Generate Title
+                        </button>
                         <button 
                           className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center"
                           onClick={(e) => {
