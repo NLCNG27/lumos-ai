@@ -130,7 +130,7 @@ export async function generateGeminiResponse(
   messages: any[],
   modelName = GEMINI_MODELS.GEMINI_FLASH,
   temperature = 0.7,
-  maxOutputTokens = 1500
+  maxOutputTokens = 3000
 ) {
   const model = getGeminiModel(modelName);
   const geminiContents = convertToGeminiFormat(messages);
@@ -169,7 +169,7 @@ export async function callGeminiWithTimeout(
   messages: any[],
   modelName = GEMINI_MODELS.GEMINI_FLASH,
   temperature = 0.7,
-  maxOutputTokens = 1500
+  maxOutputTokens = 3000
 ) {
   // Create a timeout promise
   const timeoutPromise = new Promise((_, reject) => {
@@ -215,7 +215,7 @@ export async function generateMultimodalResponse(
   messages: any[],
   modelName = GEMINI_MODELS.GEMINI_FLASH,
   temperature = 0.7,
-  maxOutputTokens = 1500
+  maxOutputTokens = 3000
 ) {
   // Always use the Flash model for all content types (text and images)
   const model = getGeminiModel(GEMINI_MODELS.GEMINI_FLASH);

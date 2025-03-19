@@ -802,7 +802,7 @@ export async function POST(req: Request) {
                         formattedMessages as any,
                         GEMINI_MODELS.GEMINI_FLASH,
                         0.7,
-                        1500
+                        3000
                     ) as any;
                     
                     // Cache the response
@@ -860,7 +860,7 @@ export async function POST(req: Request) {
                         fallbackMessages as any,
                         fallbackModel,
                         0.7,
-                        1500
+                        3000
                     ) as any; // Type assertion
 
                     // Add detailed PDF metrics to response if we processed PDFs
@@ -885,7 +885,7 @@ export async function POST(req: Request) {
                     formattedMessages as any,
                     GEMINI_MODELS.GEMINI_FLASH,
                     0.7,
-                    1500
+                    3000
                 ) as any; // Type assertion
 
                 // Log PDF stats
@@ -936,7 +936,7 @@ export async function POST(req: Request) {
                     formattedMessages as any,
                     GEMINI_MODELS.GEMINI_FLASH,
                     0.7,
-                    1500
+                    3000
                 ) as any; // Type assertion
 
                 // Log information about the messages sent to Gemini
@@ -1187,7 +1187,7 @@ You can download this file using the download button above.`;
             apiMessages as any,
             GEMINI_MODELS.GEMINI_FLASH,
             0.7,
-            1500
+            3000
         ) as any; // Type assertion
 
         // Cache the response
