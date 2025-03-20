@@ -14,6 +14,7 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
     const searchParams = useSearchParams();
     const [conversationId, setConversationId] = useState<string | null>(null);
     const [hasActiveConversation, setHasActiveConversation] = useState<boolean>(false);
+    const [isRecovering, setIsRecovering] = useState<boolean>(false);
 
     // Get conversation ID from URL if present
     useEffect(() => {
@@ -33,6 +34,14 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
 
     // Handle selecting a conversation
     const handleSelectConversation = (id: string) => {
+        // Track if we're in recovery mode (switching from an error state)
+        const wasRecovering = !conversationId && id;
+        if (wasRecovering) {
+            setIsRecovering(true);
+            // Clear recovery state after a short delay
+            setTimeout(() => setIsRecovering(false), 1000);
+        }
+        
         // If ID is empty, clear the current conversation
         if (!id || id.trim() === "") {
             setConversationId(null);

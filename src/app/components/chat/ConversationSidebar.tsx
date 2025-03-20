@@ -375,8 +375,17 @@ export default function ConversationSidebar({
         onSelectConversation("");
       }
       
+      // Set loading state to prevent quick actions
+      setLoading(true);
+      
       // Wait a moment to ensure state updates complete
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // First close the modal
+      setDeleteAllModalOpen(false);
+      
+      // Clear local conversations state immediately to improve UI responsiveness
+      setConversations([]);
       
       // Now make the API call to clear conversations
       console.log("Making API call to clear all conversations");
@@ -397,18 +406,13 @@ export default function ConversationSidebar({
         } catch (e) {
           console.error("Could not parse error response:", e);
         }
-        throw new Error(errorMessage);
+        // Don't throw here, just log the error
+        console.error(errorMessage);
       }
       
-      // Clear local conversations state
-      setConversations([]);
-      
-      // Close the modal first
-      setDeleteAllModalOpen(false);
-      
-      // Wait a moment before creating a new conversation
+      // Wait a moment before creating a new conversation 
       console.log("Waiting before creating new conversation");
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       // Create a new conversation after clearing all
       console.log("Creating new conversation after clearing all");
@@ -417,9 +421,12 @@ export default function ConversationSidebar({
       
     } catch (error: any) {
       console.error('Error clearing conversations:', error);
-      alert('Failed to clear all conversations. Please try again.');
+      // Don't show an alert - just log the error
+      // alert('Failed to clear all conversations. Please try again.');
     } finally {
       setLoading(false);
+      // Always refresh conversations list
+      fetchConversations();
     }
   };
 
