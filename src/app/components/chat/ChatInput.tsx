@@ -163,7 +163,7 @@ export default function ChatInput({
                     placeholder={
                         uploadedFiles.length > 0
                             ? "Ask about your files or type a message... (Shift+Enter for new line)"
-                            : "Type your message... (Shift+Enter for new line, Paste to add images)"
+                            : "Tell me what you need..."
                     }
                     className="flex-grow p-2 rounded-lg border border-gray-300 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[40px] max-h-[120px] resize-y"
                     disabled={isLoading}
