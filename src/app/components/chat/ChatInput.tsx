@@ -1,12 +1,9 @@
 import { useState, KeyboardEvent, useRef, useEffect } from "react";
 import FileUpload from "./FileUpload";
 import FilePreview from "./FilePreview";
-
-type UploadedFile = {
-    id: string;
-    file: File;
-    previewUrl?: string;
-};
+import { UploadedFile } from "@/app/types";
+import { nanoid } from "nanoid";
+import { dispatchConversationUpdate } from "@/app/hooks/useChat";
 
 type ChatInputProps = {
     onSendMessage: (message: string, files?: UploadedFile[]) => void;
@@ -21,6 +18,15 @@ export default function ChatInput({
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
     const formRef = useRef<HTMLFormElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+    // Notify when user starts typing
+    useEffect(() => {
+        if (input.trim().length > 0) {
+            // Only dispatch event if we have a non-empty input
+            // This helps indicate that we have an active conversation in progress
+            dispatchConversationUpdate('typing');
+        }
+    }, [input]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();

@@ -7,22 +7,43 @@ import { SignedIn, SignedOut, UserButton, SignInButton, SignUpButton } from "@cl
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { CONVERSATION_UPDATED_EVENT } from "@/app/hooks/useChat";
 
 // Component that uses useSearchParams
 function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
     const searchParams = useSearchParams();
     const [conversationId, setConversationId] = useState<string | null>(null);
+    const [hasActiveConversation, setHasActiveConversation] = useState<boolean>(false);
 
     // Get conversation ID from URL if present
     useEffect(() => {
         const urlConversationId = searchParams.get("conversation");
         if (urlConversationId) {
             setConversationId(urlConversationId);
+            setHasActiveConversation(true);
         }
     }, [searchParams]);
 
+    // Monitor for active conversations
+    useEffect(() => {
+        if (conversationId) {
+            setHasActiveConversation(true);
+        }
+    }, [conversationId]);
+
     // Handle selecting a conversation
     const handleSelectConversation = (id: string) => {
+        // If ID is empty, clear the current conversation
+        if (!id || id.trim() === "") {
+            setConversationId(null);
+            setHasActiveConversation(false);
+            // Update URL to remove conversation parameter
+            const url = new URL(window.location.href);
+            url.searchParams.delete("conversation");
+            window.history.pushState({}, "", url);
+            return;
+        }
+        
         // Update URL with the conversation ID
         const url = new URL(window.location.href);
         url.searchParams.set("conversation", id);
@@ -30,6 +51,7 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
         
         // Update state
         setConversationId(id);
+        setHasActiveConversation(true);
     };
 
     return (

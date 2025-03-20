@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/app/lib/supabase";
-import { openai } from "@/app/lib/openai";
+import { GEMINI_MODELS, callGeminiWithTimeout } from "@/app/lib/gemini";
 
 export async function POST(
     req: NextRequest,
@@ -84,27 +84,20 @@ export async function POST(
             return NextResponse.json({ title: "New Conversation" });
         }
 
-        // Use OpenAI to generate a concise title
-        const completion = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: [
-                {
-                    role: "system",
-                    content:
-                        "You are a helpful assistant that generates concise, descriptive titles for chat conversations. " +
-                        "Generate a short, descriptive title (maximum 6 words) based on the user's messages. " +
-                        "The title should capture the main topic or question. Be specific and informative.",
-                },
-                {
-                    role: "user",
-                    content: `Generate a short title for this conversation based on these user messages: ${userMessages.join(
-                        " | "
-                    )}`,
-                },
-            ],
-            max_tokens: 20,
-            temperature: 0.7,
-        });
+        // Use Google Gemini to generate a concise title
+        const geminiMessages = [
+            {
+                role: "user",
+                content: `Generate a short, descriptive title (maximum 6 words) based on these user messages from a conversation. Be specific and informative, capturing the main topic. Messages: ${userMessages.join(" | ")}`,
+            },
+        ];
+        
+        const completion = await callGeminiWithTimeout(
+            geminiMessages,
+            GEMINI_MODELS.GEMINI_FLASH,
+            0.7,
+            50 // Small token limit for titles
+        ) as any; // Type assertion to handle the unknown type
 
         const generatedTitle =
             completion.choices[0]?.message?.content?.trim() ||

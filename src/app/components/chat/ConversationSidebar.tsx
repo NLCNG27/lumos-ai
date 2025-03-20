@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Conversation } from "@/app/types";
 import Link from "next/link";
+import { CONVERSATION_UPDATED_EVENT } from "@/app/hooks/useChat";
 
 interface ConversationSidebarProps {
   currentConversationId: string | null;
@@ -74,6 +75,9 @@ export default function ConversationSidebar({
   const [titleRefreshes, setTitleRefreshes] = useState<Record<string, boolean>>({});
   const menuRef = useRef<HTMLDivElement>(null);
   const [lastMessageTimestamp, setLastMessageTimestamp] = useState<string | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
+
+  const hasActiveConversation = currentConversationId !== null || isTyping;
 
   // Helper function to get the message count for a conversation
   const getMessageCount = async (conversationId: string): Promise<number> => {
@@ -355,23 +359,61 @@ export default function ConversationSidebar({
     setLoading(true);
     
     try {
-      const response = await fetch('/api/conversations/clear-all', {
-        method: 'DELETE',
-      });
+      console.log("Starting clear all conversations process");
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to clear conversations');
+      // IMPORTANT: Reset current conversation ID first to prevent loading a non-existent conversation
+      // This needs to happen BEFORE the API call to prevent race conditions
+      if (currentConversationId) {
+        console.log("Clearing current conversation ID:", currentConversationId);
+        
+        // Update URL to remove conversation parameter
+        const url = new URL(window.location.href);
+        url.searchParams.delete("conversation");
+        window.history.pushState({}, "", url);
+        
+        // Notify parent component to clear the current conversation ID
+        onSelectConversation("");
       }
       
-      // Refresh the conversations list
-      await fetchConversations();
+      // Wait a moment to ensure state updates complete
+      await new Promise(resolve => setTimeout(resolve, 200));
       
-      // Always create a new conversation after clearing all
-      await createNewConversation();
+      // Now make the API call to clear conversations
+      console.log("Making API call to clear all conversations");
+      const response = await fetch('/api/conversations/clear-all', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+      });
       
-      // Close the modal
+      console.log("API response status:", response.status);
+      
+      if (!response.ok) {
+        let errorMessage = 'Failed to clear conversations';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          console.error("Could not parse error response:", e);
+        }
+        throw new Error(errorMessage);
+      }
+      
+      // Clear local conversations state
+      setConversations([]);
+      
+      // Close the modal first
       setDeleteAllModalOpen(false);
+      
+      // Wait a moment before creating a new conversation
+      console.log("Waiting before creating new conversation");
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Create a new conversation after clearing all
+      console.log("Creating new conversation after clearing all");
+      const newConv = await createNewConversation();
+      console.log("New conversation created:", newConv);
       
     } catch (error: any) {
       console.error('Error clearing conversations:', error);
@@ -424,6 +466,44 @@ export default function ConversationSidebar({
     }
   };
 
+  // Listen for conversation update events
+  const handleConversationUpdate = (event: CustomEvent) => {
+    console.log('Received conversation update event:', event.detail);
+    
+    if (event.detail.isTyping) {
+      // Handle typing indicator
+      setIsTyping(true);
+      
+      // Set a timer to clear typing state after 5 seconds of inactivity
+      const typingTimer = setTimeout(() => {
+        setIsTyping(false);
+      }, 5000);
+      
+      // Store the timer ID for cleanup
+      return () => clearTimeout(typingTimer);
+    } else {
+      // Regular conversation update
+      setLastMessageTimestamp(event.detail.timestamp);
+      // Immediately refresh conversations
+      fetchConversations();
+    }
+  };
+  
+  // Add event listener with type assertion
+  useEffect(() => {
+    window.addEventListener(
+      CONVERSATION_UPDATED_EVENT, 
+      handleConversationUpdate as EventListener
+    );
+    
+    return () => {
+      window.removeEventListener(
+        CONVERSATION_UPDATED_EVENT, 
+        handleConversationUpdate as EventListener
+      );
+    };
+  }, [fetchConversations]);
+
   // Load conversations on initial render
   useEffect(() => {
     fetchConversations();
@@ -431,7 +511,9 @@ export default function ConversationSidebar({
     // Refresh conversations every 10 seconds instead of 30 for more real-time title updates
     const intervalId = setInterval(fetchConversations, 10000);
     
-    return () => clearInterval(intervalId);
+    return () => {
+      clearInterval(intervalId);
+    };
   }, [showArchived, fetchConversations]);
 
   // Update the conversation list when the current conversation changes
@@ -439,53 +521,7 @@ export default function ConversationSidebar({
     if (currentConversationId) {
       fetchConversations();
     }
-  }, [currentConversationId, fetchConversations]);
-
-  // Listen for changes to the current conversation and update titles
-  useEffect(() => {
-    if (!currentConversationId) return;
-    
-    // If we have a current conversation, check for updates more frequently
-    const checkForUpdates = async () => {
-      try {
-        // First, check if the conversation has any new messages
-        const response = await fetch(`/api/conversations/${currentConversationId}/messages`);
-        if (!response.ok) return;
-        
-        const data = await response.json();
-        if (!data.messages || data.messages.length === 0) return;
-        
-        // Sort messages by timestamp to get the latest
-        const sortedMessages = [...data.messages].sort((a, b) => 
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
-        
-        const latestMessage = sortedMessages[0];
-        const latestTimestamp = latestMessage?.timestamp;
-        
-        // If we have a new message since last check, update the title
-        if (latestTimestamp && latestTimestamp !== lastMessageTimestamp) {
-          setLastMessageTimestamp(latestTimestamp);
-          
-          // Only generate a new title if we have at least 1 message and it's a user message
-          if (data.messages.length >= 1 && latestMessage.role === 'user') {
-            // Wait a short delay to allow the AI response to be generated first
-            setTimeout(() => {
-              generateTitle(new MouseEvent('click') as any, currentConversationId);
-            }, 1000);
-          }
-        }
-      } catch (err) {
-        console.error("Error checking for updates:", err);
-      }
-    };
-    
-    // Check immediately and then at regular intervals
-    checkForUpdates();
-    const intervalId = setInterval(checkForUpdates, 5000);
-    
-    return () => clearInterval(intervalId);
-  }, [currentConversationId, generateTitle, lastMessageTimestamp]);
+  }, [currentConversationId, fetchConversations, lastMessageTimestamp]);
 
   return (
     <>
@@ -508,8 +544,30 @@ export default function ConversationSidebar({
             <div className="text-gray-400 text-center p-4">Loading conversations...</div>
           ) : error ? (
             <div className="text-red-400 text-center p-4">{error}</div>
-          ) : conversations.length === 0 ? (
+          ) : conversations.length === 0 && !hasActiveConversation ? (
             <div className="text-gray-400 text-center p-4">No conversations found</div>
+          ) : conversations.length === 0 && hasActiveConversation ? (
+            <div className="text-blue-400 text-center p-4">
+              <div className="animate-pulse mb-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mx-auto" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="flex items-center justify-center space-x-1">
+                <span>Conversation in progress</span>
+                <span className="flex space-x-1">
+                  <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                  <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                  <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                </span>
+              </div>
+              <button 
+                onClick={fetchConversations}
+                className="block mx-auto mt-2 text-xs text-blue-500 hover:text-blue-400"
+              >
+                Refresh
+              </button>
+            </div>
           ) : (
             <div className="p-2 space-y-1">
               {conversations.map((conversation) => (

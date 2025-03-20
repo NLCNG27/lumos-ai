@@ -1,7 +1,7 @@
-import { useEffect, useRef, memo, useMemo } from "react";
+import { useEffect, useRef, memo, useMemo, useState } from "react";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
-import { useChat } from "@/app/hooks/useChat";
+import { useChat, dispatchConversationUpdate } from "@/app/hooks/useChat";
 import Link from "next/link";
 import LoadingDots from "../ui/LoadingDots";
 
@@ -14,15 +14,55 @@ const MemoizedChatMessage = memo(ChatMessage);
 MemoizedChatMessage.displayName = 'MemoizedChatMessage';
 
 export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
-    const { messages, isLoading, error, sendMessage, currentConversation } = useChat({
+    const { messages, isLoading, error, sendMessage, currentConversation, createNewConversation } = useChat({
         initialConversationId
     });
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const [showRecoveryButton, setShowRecoveryButton] = useState(false);
+    const prevConversationIdRef = useRef<string | undefined>(initialConversationId);
+    
+    // Handle recovery from errors
+    useEffect(() => {
+        if (error?.includes("Conversation not found") || error?.includes("404")) {
+            setShowRecoveryButton(true);
+        } else {
+            setShowRecoveryButton(false);
+        }
+    }, [error]);
+    
+    // Detect when conversation ID is cleared (like when deleting all conversations)
+    useEffect(() => {
+        // If we had a conversation ID before but now it's gone, we need to reset
+        if (prevConversationIdRef.current && !initialConversationId) {
+            console.log("Conversation ID cleared, creating new conversation");
+            createNewConversation().catch(err => {
+                console.error("Failed to create new conversation after ID cleared:", err);
+            });
+        }
+        
+        // Update the ref to track changes
+        prevConversationIdRef.current = initialConversationId;
+    }, [initialConversationId, createNewConversation]);
+
+    // Handle recovery action
+    const handleRecovery = async () => {
+        try {
+            await createNewConversation();
+            setShowRecoveryButton(false);
+        } catch (err) {
+            console.error("Failed to recover with new conversation:", err);
+        }
+    };
 
     // Scroll to bottom when messages change
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+        
+        // If we have messages and a current conversation, dispatch an update event
+        if (messages.length > 0 && currentConversation) {
+            dispatchConversationUpdate(currentConversation.id);
+        }
+    }, [messages, currentConversation]);
 
     // Only render visible messages for better performance
     // This is a simple virtualization approach - for very large conversations,
@@ -72,6 +112,14 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
                     <div className="p-3 bg-red-900/70 text-red-100 rounded-lg text-sm border border-red-800 animate-fadeIn">
                         <p className="font-medium mb-1">Error</p>
                         <p>{error}</p>
+                        {showRecoveryButton && (
+                            <button 
+                                onClick={handleRecovery}
+                                className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm transition-colors"
+                            >
+                                Start a new conversation
+                            </button>
+                        )}
                     </div>
                 )}
 

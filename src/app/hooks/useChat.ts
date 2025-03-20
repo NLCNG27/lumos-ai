@@ -1,6 +1,21 @@
 import { useState, useCallback, useEffect } from "react";
 import { Message, UploadedFile, ProcessedFile, Conversation } from "@/app/types";
 
+// Define a custom event for real-time conversation updates
+export const CONVERSATION_UPDATED_EVENT = 'conversation-updated';
+
+// Helper function to dispatch conversation updated event
+export function dispatchConversationUpdate(conversationId: string) {
+    const event = new CustomEvent(CONVERSATION_UPDATED_EVENT, { 
+        detail: { 
+            conversationId, 
+            timestamp: new Date().toISOString(), 
+            isTyping: conversationId === 'typing' 
+        } 
+    });
+    window.dispatchEvent(event);
+}
+
 interface UseChatProps {
   initialConversationId?: string;
 }
@@ -38,6 +53,12 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
 
     // Load an existing conversation and its messages
     const loadConversation = useCallback(async (conversationId: string) => {
+        // Don't try to load if no ID is provided
+        if (!conversationId) {
+            console.log("No conversation ID provided, skipping load");
+            return;
+        }
+        
         setIsLoading(true);
         try {
             // Fetch conversation details
@@ -54,25 +75,38 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
                 }
             }
             
-            const conversationData = await conversationResponse.json();
+            // Try to parse the response
+            let conversationData;
+            try {
+                conversationData = await conversationResponse.json();
+            } catch (parseError) {
+                console.error("Failed to parse conversation response:", parseError);
+                throw new Error("Invalid response from server");
+            }
             
             // Validate conversation data
             if (!conversationData || !conversationData.conversation) {
+                console.error("Invalid conversation data:", conversationData);
                 throw new Error("Invalid conversation data received");
             }
             
             setCurrentConversation(conversationData.conversation);
 
             // Fetch conversation messages
-            const messagesResponse = await fetch(`/api/conversations/${conversationId}/messages`);
-            if (!messagesResponse.ok) {
-                console.error(`Error loading messages: ${messagesResponse.status}`);
-                // Continue even if messages can't be loaded
+            try {
+                const messagesResponse = await fetch(`/api/conversations/${conversationId}/messages`);
+                if (!messagesResponse.ok) {
+                    console.error(`Error loading messages: ${messagesResponse.status}`);
+                    // Continue even if messages can't be loaded
+                    setMessages([]);
+                } else {
+                    const messagesData = await messagesResponse.json();
+                    setMessages(messagesData.messages || []);
+                }
+            } catch (messagesError) {
+                console.error("Error fetching messages:", messagesError);
+                // Don't fail the entire operation if we can't load messages
                 setMessages([]);
-                // Don't throw here to avoid triggering the catch block
-            } else {
-                const messagesData = await messagesResponse.json();
-                setMessages(messagesData.messages || []);
             }
         } catch (err) {
             console.error("Error loading conversation:", err);
@@ -95,8 +129,22 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
                         await loadConversation(initialConversationId);
                     } catch (err) {
                         console.error("Failed to load initial conversation:", err);
-                        // If loading the specified conversation fails, create a new one
-                        await createNewConversation();
+                        // Handle specific error cases to avoid infinite loops
+                        if (err instanceof Error && 
+                            (err.message === "Conversation not found" || 
+                             err.message.includes("404"))) {
+                            // Clear URL and conversation state when conversation not found
+                            if (typeof window !== 'undefined') {
+                                const url = new URL(window.location.href);
+                                url.searchParams.delete("conversation");
+                                window.history.pushState({}, "", url);
+                            }
+                            // If the specified conversation doesn't exist, create a new one
+                            await createNewConversation();
+                        } else {
+                            // For other errors, still try to create a new conversation
+                            await createNewConversation();
+                        }
                     }
                 } else {
                     // Check if user has existing conversations
@@ -332,6 +380,9 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
 
                 // Save AI message to conversation
                 await saveMessageToConversation(assistantMessage);
+                
+                // Dispatch an event to notify that a conversation has been updated
+                dispatchConversationUpdate(currentConversation.id);
             } catch (err) {
                 setError(
                     err instanceof Error
