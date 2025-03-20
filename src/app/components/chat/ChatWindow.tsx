@@ -79,7 +79,7 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
         }
     };
 
-    // Scroll to bottom when messages change
+    // Scroll to bottom when messages change or when loading state changes
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
         
@@ -87,7 +87,14 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
         if (messages.length > 0 && currentConversation) {
             dispatchConversationUpdate(currentConversation.id);
         }
-    }, [messages, currentConversation]);
+    }, [messages, currentConversation, isLoading]);
+    
+    // Automatically scroll to bottom when typing indicator appears
+    useEffect(() => {
+        if (isLoading && currentConversation && messages.length > 0) {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }
+    }, [isLoading, currentConversation, messages.length]);
 
     // Only render visible messages for better performance
     // This is a simple virtualization approach - for very large conversations,
@@ -101,7 +108,8 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
     }, [messages]);
 
     // Instead of showing error messages to the user, show a loading or welcome state
-    const showWelcomeOrLoading = !currentConversation || isLoading || recoveryInProgress;
+    const showWelcomeState = !currentConversation && !isLoading && !recoveryInProgress;
+    const showLoadingOverlay = !currentConversation && (isLoading || recoveryInProgress);
     
     return (
         <div className="flex flex-col h-full bg-black dark:bg-black rounded-lg shadow-lg">
@@ -119,21 +127,15 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
             </div>
 
             <div className="flex-1 p-6 overflow-y-auto space-y-6 bg-gradient-to-b from-gray-950 to-black">
-                {showWelcomeOrLoading ? (
+                {/* Show loading overlay only when no conversation exists yet */}
+                {showLoadingOverlay ? (
                     <div className="text-center text-gray-500 mt-20">
-                        {isLoading || recoveryInProgress ? (
-                            <div>
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                                <p>Preparing your chat...</p>
-                            </div>
-                        ) : (
-                            <p>
-                                👋 Hello! I&apos;m Lumos AI. How can I help you
-                                today?
-                            </p>
-                        )}
+                        <div>
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                            <p>Preparing your chat...</p>
+                        </div>
                     </div>
-                ) : messages.length === 0 ? (
+                ) : messages.length === 0 || showWelcomeState ? (
                     <div className="text-center text-gray-500 mt-20">
                         <p>
                             👋 Hello! I&apos;m Lumos AI. How can I help you
@@ -172,9 +174,17 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
                     </div>
                 )}
 
-                {isLoading && !showWelcomeOrLoading && (
+                {/* Show thinking indicator at the bottom during active chat */}
+                {isLoading && currentConversation && messages.length > 0 && (
                     <div className="flex items-center justify-start p-3 animate-fadeIn">
-                        <LoadingDots size="medium" />
+                        <div className="text-blue-400 flex items-center">
+                            <span className="mr-2">Thinking</span>
+                            <span className="flex space-x-1">
+                                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                                <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                            </span>
+                        </div>
                     </div>
                 )}
 
