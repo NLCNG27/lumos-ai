@@ -50,15 +50,35 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
     useEffect(() => {
         // If we had a conversation ID before but now it's gone, we need to reset
         if (prevConversationIdRef.current && !initialConversationId) {
-            console.log("Conversation ID cleared, creating new conversation");
+            console.log("Conversation ID cleared, checking for existing conversations");
             setRecoveryInProgress(true);
-            createNewConversation()
+            
+            // First check if there are already existing conversations
+            fetch('/api/conversations?include_archived=false')
+                .then(response => {
+                    if (!response.ok) throw new Error(`Error: ${response.status}`);
+                    return response.json();
+                })
+                .then(data => {
+                    // If there are already conversations, don't create a new one
+                    if (data.conversations && data.conversations.length > 0) {
+                        console.log("Found existing conversations, not creating a new one:", 
+                            data.conversations.length);
+                        setRecoveryInProgress(false);
+                    } else {
+                        // Only create a new conversation if none exist
+                        console.log("No existing conversations found, creating a new one");
+                        return createNewConversation();
+                    }
+                })
                 .then(() => {
                     setRecoveryInProgress(false);
                 })
                 .catch(err => {
-                    console.error("Failed to create new conversation after ID cleared:", err);
+                    console.error("Failed to recover after ID cleared:", err);
                     setRecoveryInProgress(false);
+                    // Only show recovery button if auto-recovery failed
+                    setShowRecoveryButton(true);
                 });
         }
         
@@ -70,7 +90,27 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
     const handleRecovery = async () => {
         try {
             setRecoveryInProgress(true);
-            await createNewConversation();
+            
+            // First check if there are already existing conversations
+            const response = await fetch('/api/conversations?include_archived=false');
+            if (!response.ok) throw new Error(`Error: ${response.status}`);
+            const data = await response.json();
+            
+            // If there are already conversations, don't create a new one
+            if (data.conversations && data.conversations.length > 0) {
+                console.log("Found existing conversations, not creating a new one:", 
+                    data.conversations.length);
+                // Select the first conversation
+                if (data.conversations[0].id) {
+                    window.location.href = `/?conversation=${data.conversations[0].id}`;
+                    return;
+                }
+            } else {
+                // Only create a new conversation if none exist
+                console.log("No existing conversations found, creating a new one");
+                await createNewConversation();
+            }
+            
             setShowRecoveryButton(false);
         } catch (err) {
             console.error("Failed to recover with new conversation:", err);

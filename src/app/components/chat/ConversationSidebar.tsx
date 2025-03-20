@@ -412,12 +412,24 @@ export default function ConversationSidebar({
       
       // Wait a moment before creating a new conversation 
       console.log("Waiting before creating new conversation");
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Create a new conversation after clearing all
-      console.log("Creating new conversation after clearing all");
-      const newConv = await createNewConversation();
-      console.log("New conversation created:", newConv);
+      // First check if any conversations already exist (sometimes they can be created by other components)
+      await fetchConversations();
+      
+      // Only create a new conversation if there are none
+      if (conversations.length === 0) {
+        console.log("Creating new conversation after clearing all");
+        const newConv = await createNewConversation();
+        console.log("New conversation created:", newConv);
+      } else {
+        console.log("Conversations already exist, not creating a new one:", conversations);
+        // If we already have conversations, select the first one
+        if (conversations.length > 0) {
+          onSelectConversation(conversations[0].id);
+        }
+      }
       
     } catch (error: any) {
       console.error('Error clearing conversations:', error);
