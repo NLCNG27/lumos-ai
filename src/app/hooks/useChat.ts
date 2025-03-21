@@ -281,9 +281,15 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
             // For the first message, generate a simple title from the content
             if (messages.length === 0) {
                 // Generate a title from the first few words of the message
-                const title =
+                let title =
                     content.split(" ").slice(0, 5).join(" ") +
                     (content.length > 30 ? "..." : "");
+                
+                // Clean up any potential markdown formatting
+                title = title
+                    .replace(/\*\*/g, "")  // Remove markdown bold
+                    .replace(/"/g, "")     // Remove all quotes
+                    .trim();
 
                 await fetch(`/api/conversations/${currentConversation.id}`, {
                     method: "PATCH",

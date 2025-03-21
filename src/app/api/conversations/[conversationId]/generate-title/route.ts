@@ -88,7 +88,7 @@ export async function POST(
         const geminiMessages = [
             {
                 role: "user",
-                content: `Generate a short, descriptive title (maximum 6 words) based on these user messages from a conversation. Be specific and informative, capturing the main topic. Messages: ${userMessages.join(" | ")}`,
+                content: `Generate a short, plain text title (maximum 6 words) based on these user messages from a conversation. Be specific and informative, capturing the main topic. Do NOT use markdown formatting, quotes, or special characters. Just output plain text. Messages: ${userMessages.join(" | ")}`,
             },
         ];
         
@@ -103,8 +103,14 @@ export async function POST(
             completion.choices[0]?.message?.content?.trim() ||
             "New Conversation";
 
-        // Clean up the title (remove quotes if present)
-        const cleanTitle = generatedTitle.replace(/^["']|["']$/g, "");
+        // Clean up the title (remove quotes, markdown formatting, etc.)
+        const cleanTitle = generatedTitle
+            .replace(/^["']|["']$/g, "")           // Remove quotes at beginning/end
+            .replace(/\*\*/g, "")                 // Remove ** markdown bold
+            .replace(/"/g, "")                    // Remove all double quotes
+            .replace(/^\s*[-*]\s+/, "")           // Remove bullet points
+            .replace(/\s*[:]\s*$/, "")            // Remove trailing colons
+            .trim();
 
         // Update the conversation title in the database
         const { data: updatedConv, error: updateError } = await supabase

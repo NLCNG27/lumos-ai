@@ -133,7 +133,15 @@ async function hasConversationTitle(conversationId: string): Promise<boolean> {
 // Helper to generate a title from the first message
 function generateTitleFromMessage(content: string): string {
     // Take the first 50 characters and add ellipsis if needed
-    const title = content.substring(0, 50);
+    let title = content.substring(0, 50);
+    
+    // Clean up any markdown formatting
+    title = title
+        .replace(/\*\*/g, "")  // Remove markdown bold
+        .replace(/"/g, "")     // Remove double quotes
+        .replace(/^\s*[-*]\s+/, "") // Remove bullet points
+        .trim();
+    
     return title.length < content.length ? `${title}...` : title;
 }
 
