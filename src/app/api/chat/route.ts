@@ -26,6 +26,12 @@ import {
     extractPdfStructure,
 } from "@/app/lib/simplePdfExtractor";
 
+// Import our new document extractor for Office documents
+import {
+    extractOfficeDocumentText,
+    extractOfficeMetadata
+} from "@/app/lib/documentExtractor";
+
 // Import the dataset generator
 import { generateRandomDataset } from "@/app/lib/datasetGenerator";
 
@@ -107,103 +113,12 @@ const extractOfficeText = async (
     fileType: string,
     fileName: string
 ): Promise<string> => {
-    // Handle different office document types
-    if (
-        fileType ===
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-        fileName.endsWith(".docx")
-    ) {
-        try {
-            // Use mammoth.js for Word documents
-            const mammoth = await import("mammoth");
-
-            // Try different extraction methods for Word docx
-            try {
-                // First try with standard options
-                const result = await mammoth.extractRawText({ buffer });
-                if (result.value && result.value.trim().length > 0) {
-                    return result.value;
-                }
-
-                // If that fails, try with html extraction
-                const htmlResult = await mammoth.convertToHtml({ buffer });
-                if (htmlResult.value && htmlResult.value.trim().length > 0) {
-                    // Simple HTML to text conversion
-                    return htmlResult.value
-                        .replace(/<[^>]+>/g, " ") // Replace HTML tags with spaces
-                        .replace(/\s+/g, " ") // Replace multiple spaces with single space
-                        .trim(); // Trim leading/trailing whitespace
-                }
-
-                throw new Error("No content extracted from Word document");
-            } catch (extractError) {
-                // Try ZIP-based extraction as fallback
-                const zipText = await extractTextFromZipArchive(buffer);
-                if (zipText && zipText.trim().length > 0) {
-                    return zipText;
-                }
-                throw extractError;
-            }
-        } catch (error) {
-            console.error("Error extracting text from Word document:", error);
-            throw new Error("Failed to extract text from Word document");
-        }
-    } else if (
-        fileType ===
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-        fileName.endsWith(".xlsx")
-    ) {
-        try {
-            // Use xlsx for Excel files
-            const XLSX = await import("xlsx");
-            const workbook = XLSX.read(buffer, { type: "buffer" });
-
-            // Extract text from all sheets
-            let text = "";
-            workbook.SheetNames.forEach((sheetName) => {
-                const sheet = workbook.Sheets[sheetName];
-                text += `--- Sheet: ${sheetName} ---\n`;
-                text += XLSX.utils.sheet_to_csv(sheet) + "\n\n";
-            });
-            return text;
-        } catch (error) {
-            console.error("Error extracting text from Excel file:", error);
-            throw new Error("Failed to extract text from Excel file");
-        }
-    } else if (
-        fileType ===
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
-        fileName.endsWith(".pptx")
-    ) {
-        // For PowerPoint, this is more complex and might require a specialized library
-        // This is a basic implementation
-        try {
-            // Use docx-wasm for more complex formats if available
-            if (buffer.length > 0) {
-                const text = await extractTextFromZipArchive(buffer);
-                if (text && text.trim().length > 0) {
-                    return text;
-                }
-            }
-            throw new Error("No suitable parser found for presentation file");
-        } catch (error) {
-            console.error("Error extracting text from PowerPoint file:", error);
-            throw new Error("Failed to extract text from PowerPoint file");
-        }
-    } else {
-        // Try generic extraction for other office formats
-        try {
-            const text = await extractTextFromZipArchive(buffer);
-            if (text && text.trim().length > 0) {
-                return text;
-            }
-            throw new Error("Unsupported office document format");
-        } catch (error) {
-            console.error(`Error extracting text from ${fileType}:`, error);
-            throw new Error(
-                `Failed to extract text from unknown office format: ${fileType}`
-            );
-        }
+    try {
+        // Use our new document extractor module
+        return await extractOfficeDocumentText(buffer, fileType, fileName);
+    } catch (error) {
+        console.error(`Error extracting text from Office document (${fileName}):`, error);
+        throw new Error(`Failed to extract text from ${fileName}`);
     }
 };
 
@@ -732,6 +647,7 @@ export async function POST(req: Request) {
                     if (img.url && img.url.startsWith("data:")) {
                         // Check if it's a PDF being sent as an image
                         const isPdf =
+                            img.name.startsWith("PDF document:") || 
                             img.name.includes("PDF document") ||
                             (img.name &&
                                 img.name.toLowerCase().includes("pdf"));
@@ -741,7 +657,7 @@ export async function POST(req: Request) {
                             // Add text explaining this is a PDF
                             contentArray.push({
                                 type: "text",
-                                text: `I've attached a PDF document named "${img.name}". This is a visual representation of the PDF content. Please analyze what you can see in this document, including text content, form fields, headers, logos, tables, and any other visual elements. Describe the document's purpose, structure, and key information based on what you can see.`,
+                                text: `I've attached a PDF document named "${img.name}". This is a visual representation of the PDF content. Please analyze what you can see in this document, including text content, form fields, headers, logos, tables, and any other visual elements you can identify.\n\n`,
                             });
                         }
 
@@ -770,7 +686,7 @@ export async function POST(req: Request) {
 
             // Check if we have PDFs that should be processed visually
             const hasPdfsForVisualProcessing = imageUrls.some(
-                (img) => img.name && img.name.includes("PDF document")
+                (img) => img.name.startsWith('PDF document:')
             );
 
             if (validImageCount > 0 || hasPdfsForVisualProcessing) {
@@ -1328,20 +1244,108 @@ async function processFiles(files: FileData[]): Promise<{
                             return result;
                         } 
                         else if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-                            // For PDFs, use a simplified approach in production
-                            if (process.env.NODE_ENV === 'production') {
-                                // In production, don't try to extract text, just use placeholder
-                                console.log("Production mode: Using simplified PDF handling");
+                            // Check if PDF text extraction is enabled
+                            const pdfTextExtractionEnabled = process.env.ENABLE_PDF_TEXT_EXTRACTION === 'true';
+                            
+                            // For PDFs, use a simplified approach in production unless text extraction is explicitly enabled
+                            if (process.env.NODE_ENV === 'production' && !pdfTextExtractionEnabled) {
+                                try {
+                                    // In production, try to extract text but also provide visual processing
+                                    console.log("Production mode: Using combined PDF handling approach");
+                                    
+                                    // Convert file content from base64 to buffer
+                                    const contentParts = file.content.split(',');
+                                    const base64Content = contentParts.length > 1 ? contentParts[1] : contentParts[0];
+                                    const buffer = Buffer.from(base64Content, 'base64');
+                                    
+                                    // Try to extract basic metadata and text
+                                    const metadata = await simplePdfMetadata(buffer);
+                                    
+                                    // Format a helpful text representation that includes metadata
+                                    let pdfText = `[PDF Document: ${file.name}]\n\n`;
+                                    pdfText += `Pages: ${metadata.pageCount || 'Unknown'}\n`;
+                                    if (metadata.title && metadata.title !== 'Unknown') pdfText += `Title: ${metadata.title}\n`;
+                                    if (metadata.author && metadata.author !== 'Unknown') pdfText += `Author: ${metadata.author}\n`;
+                                    if (metadata.subject) pdfText += `Subject: ${metadata.subject}\n`;
+                                    
+                                    // Include both text representation and provide image URL for visual processing
+                                    const result = {
+                                        text: pdfText,
+                                        isImage: true, // Also provide for visual processing
+                                        isUnprocessable: false,
+                                        imageUrl: { url: file.content, name: `PDF document: ${file.name}` },
+                                        pdfStats: {
+                                            totalCount: 1,
+                                            successCount: 1,
+                                            failureCount: 0,
+                                            methodsUsed: ["production_combined_approach"],
+                                            errors: [],
+                                        },
+                                    } as ProcessingResult;
+                                    
+                                    // Cache the result
+                                    fileProcessingCache.set(fileId, {
+                                        content: result.text,
+                                        timestamp: Date.now()
+                                    });
+                                    
+                                    return result;
+                                } catch (error) {
+                                    // Fallback to simple visual processing if errors occur
+                                    console.log("Production mode: Falling back to simplified visual PDF handling");
+                                    const result = {
+                                        text: `[PDF Document: ${file.name} - Content will be processed visually]`,
+                                        isImage: true, // Treat as image so it gets visual processing
+                                        isUnprocessable: false,
+                                        imageUrl: { url: file.content, name: `PDF document: ${file.name}` },
+                                        pdfStats: {
+                                            totalCount: 1,
+                                            successCount: 1,
+                                            failureCount: 0,
+                                            methodsUsed: ["simplified_production_fallback"],
+                                            errors: [],
+                                        },
+                                    } as ProcessingResult;
+                                    
+                                    // Cache the result
+                                    fileProcessingCache.set(fileId, {
+                                        content: result.text,
+                                        timestamp: Date.now()
+                                    });
+                                    
+                                    return result;
+                                }
+                            }
+                            // In development, extract text from PDF using our simple PDF extractor
+                            try {
+                                // Convert file content from base64 to buffer
+                                const contentParts = file.content.split(',');
+                                const base64Content = contentParts.length > 1 ? contentParts[1] : contentParts[0];
+                                const buffer = Buffer.from(base64Content, 'base64');
+                                
+                                console.log(`Processing PDF file: ${file.name}`);
+                                
+                                // Extract text using our simple PDF extractor
+                                const extractedText = await extractPdfText(buffer);
+                                // Extract structure for better context
+                                const structure = await extractPdfStructure(buffer);
+                                
+                                // Combine text and structure
+                                let pdfContent = extractedText;
+                                if (structure && structure.length > 0) {
+                                    pdfContent += "\n\n--- Document Structure ---\n" + structure;
+                                }
+                                
                                 const result = {
-                                    text: `[PDF Document: ${file.name} - Content will be processed visually]`,
-                                    isImage: true, // Treat as image so it gets visual processing
+                                    text: pdfContent,
+                                    isImage: false, // We're extracting text, so don't treat as image
                                     isUnprocessable: false,
-                                    imageUrl: { url: file.content, name: `PDF document: ${file.name}` },
+                                    imageUrl: null,
                                     pdfStats: {
                                         totalCount: 1,
                                         successCount: 1,
                                         failureCount: 0,
-                                        methodsUsed: ["simplified_production_mode"],
+                                        methodsUsed: ["pdfjs_text_extraction"],
                                         errors: [],
                                     },
                                 } as ProcessingResult;
@@ -1353,10 +1357,141 @@ async function processFiles(files: FileData[]): Promise<{
                                 });
                                 
                                 return result;
+                            } catch (error) {
+                                console.error(`Error extracting text from PDF ${file.name}:`, error);
+                                
+                                // Fallback to treating as image
+                                return {
+                                    text: `[PDF Document: ${file.name} - Could not extract text, will process visually]`,
+                                    isImage: true,
+                                    isUnprocessable: false,
+                                    imageUrl: { url: file.content, name: `PDF document: ${file.name}` },
+                                    pdfStats: {
+                                        totalCount: 1,
+                                        successCount: 0,
+                                        failureCount: 1,
+                                        methodsUsed: ["fallback_to_visual"],
+                                        errors: [error instanceof Error ? error.message : "Unknown error"],
+                                    },
+                                } as ProcessingResult;
                             }
-                            // In development, continue with normal processing
-                            // Normal processing code would go here
-                            // ...
+                        }
+                        else if (
+                            file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" || 
+                            file.name.toLowerCase().endsWith(".docx")
+                        ) {
+                            try {
+                                // Convert file content from base64 to buffer
+                                const contentParts = file.content.split(',');
+                                const base64Content = contentParts.length > 1 ? contentParts[1] : contentParts[0];
+                                const buffer = Buffer.from(base64Content, 'base64');
+                                
+                                // Extract text from the DOCX file
+                                const text = await extractOfficeText(buffer, file.type, file.name);
+                                
+                                const result = {
+                                    text: `[DOCX Document: ${file.name}]\n\n${text}`,
+                                    isImage: false,
+                                    isUnprocessable: false,
+                                    imageUrl: null,
+                                    pdfStats: null,
+                                } as ProcessingResult;
+                                
+                                // Cache the result
+                                fileProcessingCache.set(fileId, {
+                                    content: result.text,
+                                    timestamp: Date.now()
+                                });
+                                
+                                return result;
+                            } catch (error) {
+                                console.error(`Error processing DOCX file ${file.name}:`, error);
+                                return {
+                                    text: `[Error processing DOCX file: ${file.name} - ${error instanceof Error ? error.message : "Unknown error"}]`,
+                                    isImage: false,
+                                    isUnprocessable: true,
+                                    imageUrl: null,
+                                    pdfStats: null,
+                                } as ProcessingResult;
+                            }
+                        }
+                        else if (
+                            file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || 
+                            file.name.toLowerCase().endsWith(".xlsx")
+                        ) {
+                            try {
+                                // Convert file content from base64 to buffer
+                                const contentParts = file.content.split(',');
+                                const base64Content = contentParts.length > 1 ? contentParts[1] : contentParts[0];
+                                const buffer = Buffer.from(base64Content, 'base64');
+                                
+                                // Extract text from the XLSX file
+                                const text = await extractOfficeText(buffer, file.type, file.name);
+                                
+                                const result = {
+                                    text: `[Excel Document: ${file.name}]\n\n${text}`,
+                                    isImage: false,
+                                    isUnprocessable: false,
+                                    imageUrl: null,
+                                    pdfStats: null,
+                                } as ProcessingResult;
+                                
+                                // Cache the result
+                                fileProcessingCache.set(fileId, {
+                                    content: result.text,
+                                    timestamp: Date.now()
+                                });
+                                
+                                return result;
+                            } catch (error) {
+                                console.error(`Error processing Excel file ${file.name}:`, error);
+                                return {
+                                    text: `[Error processing Excel file: ${file.name} - ${error instanceof Error ? error.message : "Unknown error"}]`,
+                                    isImage: false,
+                                    isUnprocessable: true,
+                                    imageUrl: null,
+                                    pdfStats: null,
+                                } as ProcessingResult;
+                            }
+                        }
+                        else if (
+                            file.type === "application/vnd.openxmlformats-officedocument.presentationml.presentation" || 
+                            file.name.toLowerCase().endsWith(".pptx")
+                        ) {
+                            try {
+                                // Convert file content from base64 to buffer
+                                const contentParts = file.content.split(',');
+                                const base64Content = contentParts.length > 1 ? contentParts[1] : contentParts[0];
+                                const buffer = Buffer.from(base64Content, 'base64');
+                                
+                                // Extract text from the PPTX file
+                                const text = await extractOfficeText(buffer, file.type, file.name);
+                                
+                                const result = {
+                                    text: `[PowerPoint Document: ${file.name}]\n\n${text}`,
+                                    isImage: false,
+                                    isUnprocessable: false,
+                                    imageUrl: null,
+                                    pdfStats: null,
+                                } as ProcessingResult;
+                                
+                                // Cache the result
+                                fileProcessingCache.set(fileId, {
+                                    content: result.text,
+                                    timestamp: Date.now()
+                                });
+                                
+                                return result;
+                            } catch (error) {
+                                console.error(`Error processing PowerPoint file ${file.name}:`, error);
+                                return {
+                                    text: `[Error processing PowerPoint file: ${file.name} - ${error instanceof Error ? error.message : "Unknown error"}]`,
+                                    isImage: false,
+                                    isUnprocessable: true,
+                                    imageUrl: null,
+                                    pdfStats: null,
+                                } as ProcessingResult;
+                            }
                         }
                         
                         // For other file types, return a placeholder to avoid timeout

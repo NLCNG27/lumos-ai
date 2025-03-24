@@ -78,7 +78,102 @@ export const processDocument = (
             // Fallback to normal chunking if no metadata found
             chunks = chunkText(fileContent, chunkSize, chunkOverlap);
         }
-    } else {
+    } 
+    else if (fileName.toLowerCase().endsWith(".docx") || 
+             fileName.toLowerCase().includes("word")) {
+        // For Word documents, preserve document structure if present
+        const metadataMatch = fileContent.match(/^\[DOCX Document:.*?\]\s*\n\n/);
+        
+        if (metadataMatch && metadataMatch[0]) {
+            const metadata = metadataMatch[0];
+            // The first chunk contains metadata plus some content
+            const firstContentChunk = fileContent
+                .substring(metadata.length)
+                .trim();
+
+            // Split the rest of the content
+            const remainingChunks = chunkText(
+                firstContentChunk,
+                chunkSize,
+                chunkOverlap
+            );
+
+            // Create the first chunk with metadata
+            const firstChunkSize = Math.max(chunkSize - metadata.length, 200);
+            const firstChunk =
+                metadata +
+                (remainingChunks.length > 0
+                    ? remainingChunks[0].substring(0, firstChunkSize)
+                    : "");
+
+            // Add it to our chunks
+            chunks = [firstChunk];
+
+            // If we took content from the first chunk, adjust it
+            if (
+                remainingChunks.length > 0 &&
+                firstChunkSize < remainingChunks[0].length
+            ) {
+                remainingChunks[0] =
+                    remainingChunks[0].substring(firstChunkSize);
+            }
+
+            // Add the remaining chunks
+            chunks = chunks.concat(remainingChunks);
+        } else {
+            // Fallback to normal chunking if no metadata found
+            chunks = chunkText(fileContent, chunkSize, chunkOverlap);
+        }
+    }
+    else if (fileName.toLowerCase().endsWith(".xlsx") || 
+             fileName.toLowerCase().includes("excel") || 
+             fileName.toLowerCase().endsWith(".pptx") ||
+             fileName.toLowerCase().includes("powerpoint")) {
+        // For Excel and PowerPoint documents, similar approach as DOCX
+        const metadataMatch = fileContent.match(/^\[(Excel|PowerPoint) Document:.*?\]\s*\n\n/);
+        
+        if (metadataMatch && metadataMatch[0]) {
+            const metadata = metadataMatch[0];
+            // The first chunk contains metadata plus some content
+            const firstContentChunk = fileContent
+                .substring(metadata.length)
+                .trim();
+
+            // Split the rest of the content
+            const remainingChunks = chunkText(
+                firstContentChunk,
+                chunkSize,
+                chunkOverlap
+            );
+
+            // Create the first chunk with metadata
+            const firstChunkSize = Math.max(chunkSize - metadata.length, 200);
+            const firstChunk =
+                metadata +
+                (remainingChunks.length > 0
+                    ? remainingChunks[0].substring(0, firstChunkSize)
+                    : "");
+
+            // Add it to our chunks
+            chunks = [firstChunk];
+
+            // If we took content from the first chunk, adjust it
+            if (
+                remainingChunks.length > 0 &&
+                firstChunkSize < remainingChunks[0].length
+            ) {
+                remainingChunks[0] =
+                    remainingChunks[0].substring(firstChunkSize);
+            }
+
+            // Add the remaining chunks
+            chunks = chunks.concat(remainingChunks);
+        } else {
+            // Fallback to normal chunking if no metadata found
+            chunks = chunkText(fileContent, chunkSize, chunkOverlap);
+        }
+    }
+    else {
         // Normal chunking for non-PDF files
         chunks = chunkText(fileContent, chunkSize, chunkOverlap);
     }
@@ -87,7 +182,7 @@ export const processDocument = (
     const documents = chunks.map((chunk, index) => ({
         pageContent: chunk,
         metadata: {
-            source: fileName.toLowerCase().endsWith(".pdf") ? "pdf" : "text",
+            source: determineDocumentSource(fileName),
             documentId,
             chunkId: index,
             fileName: fileName,
@@ -95,6 +190,22 @@ export const processDocument = (
     }));
 
     return { documentId, documents };
+};
+
+// Helper function to determine document source type
+const determineDocumentSource = (fileName: string): string => {
+    const lowerFileName = fileName.toLowerCase();
+    if (lowerFileName.endsWith(".pdf")) {
+        return "pdf";
+    } else if (lowerFileName.endsWith(".docx") || lowerFileName.includes("word")) {
+        return "docx";
+    } else if (lowerFileName.endsWith(".xlsx") || lowerFileName.includes("excel")) {
+        return "xlsx";
+    } else if (lowerFileName.endsWith(".pptx") || lowerFileName.includes("powerpoint")) {
+        return "pptx";
+    } else {
+        return "text";
+    }
 };
 
 // Function to chunk text
