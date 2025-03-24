@@ -21,7 +21,7 @@ export default function FilePreview({ files, onRemove }: FilePreviewProps) {
                 {files.map((fileItem) => (
                     <FileItem
                         key={fileItem.id}
-                        fileItem={fileItem}
+                        fileItem={fileItem} 
                         onRemove={onRemove}
                     />
                 ))}

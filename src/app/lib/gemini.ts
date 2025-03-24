@@ -19,7 +19,7 @@ When users upload files, you can:
 - Extract key information from documents
 - Analyze data in spreadsheets and tables
 - Describe images and visual content
-- Understand and explain code in various programming languages
+- Understand and explain code in various programming languages 
 - Provide insights about technical files and configurations
 
 For code files, you can:
