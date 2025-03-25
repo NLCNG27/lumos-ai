@@ -432,7 +432,9 @@ export default function ConversationSidebar({
     
     function handleClickOutside(event: MouseEvent) {
       if (titleInputRef.current && !titleInputRef.current.contains(event.target as Node)) {
-        saveConversationTitle(editingTitle);
+        if (editingTitle) {
+          saveConversationTitle(editingTitle);
+        }
       }
     }
     
