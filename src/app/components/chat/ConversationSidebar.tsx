@@ -76,6 +76,9 @@ export default function ConversationSidebar({
   const menuRef = useRef<HTMLDivElement>(null);
   const [lastMessageTimestamp, setLastMessageTimestamp] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
+  const [editingTitle, setEditingTitle] = useState<string | null>(null);
+  const [newTitle, setNewTitle] = useState<string>("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   const hasActiveConversation = currentConversationId !== null || isTyping;
 
@@ -354,6 +357,91 @@ export default function ConversationSidebar({
     setActiveMenu(activeMenu === conversationId ? null : conversationId);
   };
 
+  // Start editing conversation title
+  const startEditingTitle = (e: React.MouseEvent, conversation: Conversation) => {
+    e.stopPropagation();
+    setEditingTitle(conversation.id);
+    setNewTitle(conversation.title || "");
+    setActiveMenu(null); // Close the options menu
+    
+    // Focus the input field after render
+    setTimeout(() => {
+      if (titleInputRef.current) {
+        titleInputRef.current.focus();
+        titleInputRef.current.select();
+      }
+    }, 50);
+  };
+
+  // Save edited conversation title
+  const saveConversationTitle = useCallback(async (conversationId: string) => {
+    if (!newTitle.trim()) {
+      setNewTitle("New Conversation");
+    }
+    
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle.trim() }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status}`);
+      }
+      
+      // Update the conversation in local state
+      setConversations(prev => prev.map(conv => 
+        conv.id === conversationId 
+          ? { ...conv, title: newTitle.trim() } 
+          : conv
+      ));
+      
+      // Dispatch custom event to notify about the conversation update
+      const event = new CustomEvent(CONVERSATION_UPDATED_EVENT, {
+        detail: {
+          conversationId,
+          timestamp: new Date().toISOString(),
+        },
+      });
+      window.dispatchEvent(event);
+      
+      // Exit editing mode
+      setEditingTitle(null);
+    } catch (err) {
+      console.error("Error updating conversation title:", err);
+      // Exit editing mode even if there was an error
+      setEditingTitle(null);
+    }
+  }, [newTitle, setConversations, setEditingTitle]);
+
+  // Handle title input keydown events
+  const handleTitleKeyDown = (e: React.KeyboardEvent, conversationId: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveConversationTitle(conversationId);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setEditingTitle(null);
+    }
+  };
+
+  // Handle clicks outside of the title input
+  useEffect(() => {
+    if (!editingTitle) return;
+    
+    function handleClickOutside(event: MouseEvent) {
+      if (titleInputRef.current && !titleInputRef.current.contains(event.target as Node)) {
+        saveConversationTitle(editingTitle);
+      }
+    }
+    
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [editingTitle, saveConversationTitle]);
+
   // Add a function to clear all conversations
   const clearAllConversations = async () => {
     setLoading(true);
@@ -604,9 +692,26 @@ export default function ConversationSidebar({
                       <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
                     </svg>
                     <div className="truncate flex-1">
-                      <div className="font-medium truncate">
+                      <div 
+                        className="font-medium truncate" 
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          startEditingTitle(e, conversation);
+                        }}
+                      >
                         {titleRefreshes[conversation.id] ? (
                           <span className="text-blue-400">Generating title...</span>
+                        ) : editingTitle === conversation.id ? (
+                          <input
+                            ref={titleInputRef}
+                            type="text"
+                            value={newTitle}
+                            onChange={(e) => setNewTitle(e.target.value)}
+                            onKeyDown={(e) => handleTitleKeyDown(e, conversation.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full bg-gray-700 text-white border border-gray-600 rounded px-2 py-1 text-sm"
+                            maxLength={50}
+                          />
                         ) : (
                           conversation.title || "New Conversation"
                         )}
@@ -635,7 +740,15 @@ export default function ConversationSidebar({
                         ref={menuRef}
                         className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-10 py-1 w-36"
                       >
-                        
+                        <button 
+                          className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center"
+                          onClick={(e) => startEditingTitle(e, conversation)}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                          </svg>
+                          Rename
+                        </button>
                         <button 
                           className="w-full text-left px-4 py-2 text-sm text-gray-200 hover:bg-gray-700 flex items-center"
                           onClick={(e) => {
