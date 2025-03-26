@@ -574,7 +574,12 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
     }, [message.content]);
 
     // Process the message content to extract LaTeX blocks
-    const processLatexContent = (content: string) => {
+    const processLatexContent = (content: string | undefined) => {
+        // Return early if content is undefined or null
+        if (!content) {
+            return { hasLatex: false, processedContent: "" };
+        }
+
         // Check if content contains various LaTeX delimiters
         const hasStandardLatex =
             content.includes("\\[") ||
@@ -797,8 +802,40 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                             : ""
                     }`}
                 >
-                    <ProcessedContent />
+                    {message.content !== undefined ? (
+                        <ProcessedContent />
+                    ) : (
+                        <div className="text-gray-400 italic">No content to display</div>
+                    )}
                 </div>
+
+                {/* Display grounding sources if available */}
+                {!isUser && message.groundingSources && message.groundingSources.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9z" clipRule="evenodd" />
+                            </svg>
+                            Sources:
+                        </div>
+                        <div className="space-y-2">
+                            {message.groundingSources.map((source, index) => (
+                                <div key={index} className="bg-gray-100 dark:bg-gray-700/60 rounded p-2">
+                                    <a 
+                                        href={source.link} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline mb-1 block"
+                                    >
+                                        {source.title}
+                                    </a>
+                                    <p className="text-xs text-gray-600 dark:text-gray-300">{source.snippet}</p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">{source.link}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Add the context menu for code blocks */}
                 {activeCodeBlock && (

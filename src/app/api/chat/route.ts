@@ -223,909 +223,221 @@ const ensureDirectoryExists = async (directoryPath: string) => {
 
 export async function POST(req: Request) {
     try {
-        const { messages, files } = await req.json();
+        // Get request data
+        const body = await req.json();
+        const { messages, model, temperature = 0.7, maxTokens: userMaxTokens = 3000, apiKey, conversationId, userId, files = [], useGroundingSearch = false } = body;
 
-        // Process files if they exist
-        let fileContents = "";
-        let hasUnprocessableFiles = false;
-        let hasImageFiles = false;
-        let imageUrls: { url: string; name: string }[] = [];
-        let pdfStats = {
-            totalCount: 0,
-            successCount: 0,
-            failureCount: 0,
-            methodsUsed: [] as string[],
-            errors: [] as string[],
-        };
+        // for Gemini, we need a higher token count to get a decent response
+        const maxTokens = Math.max(Number(userMaxTokens), 1024);
 
-        // RAG-specific variables
-        const processedDocsInfo = [];
-        let documentContext = "";
+        console.log(`Chat request:
+          Model: ${model || 'default'}
+          Temperature: ${temperature}
+          Max Tokens: ${maxTokens}
+          Files: ${files.length > 0 ? `${files.length} files` : 'No files'}
+          ConversationId: ${conversationId || 'Not provided'}
+          UseGroundingSearch: ${useGroundingSearch ? 'Yes' : 'No'}
+        `);
 
-        if (files && files.length > 0) {
-            try {
-                // Original file processing for general content
-                const result = await processFiles(files);
-                fileContents = result.contents;
-                hasUnprocessableFiles = result.hasUnprocessableFiles;
-                hasImageFiles = result.hasImageFiles;
-                imageUrls = result.imageUrls;
-                pdfStats = result.pdfStats;
-
-                // Additional processing for RAG with PDFs
-                for (const file of files) {
-                    // Only process PDFs for document understanding
-                    if (
-                        file.type === "application/pdf" ||
-                        file.name.toLowerCase().endsWith(".pdf")
-                    ) {
-                        try {
-                            const base64Data = file.content.split(",")[1]; // Remove data URL prefix
-                            const buffer = Buffer.from(base64Data, "base64");
-
-                            // Use our new simple extractor
-                            const pdfText = await extractPdfText(buffer);
-
-                            if (pdfText && pdfText.trim()) {
-                                // Process the document (chunk and store in vector db)
-                                const docInfo = await addDocument(
-                                    pdfText,
-                                    file.name,
-                                    false
-                                );
-                                processedDocsInfo.push(docInfo);
-                            }
-                        } catch (fileError) {
-                            console.error(
-                                `Error processing file ${file.name}:`,
-                                fileError
-                            );
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error("Error processing files:", error);
-                // Continue without file processing rather than failing completely
-                hasUnprocessableFiles = true;
-            }
+        // Check if API key is provided and valid
+        if (apiKey && !isValidAPIKey(apiKey)) {
+            return NextResponse.json(
+                { error: "Invalid API key provided" },
+                { status: 400 }
+            );
         }
 
-        // Get the last user message for RAG retrieval
-        // @ts-ignore - TypeScript doesn't recognize the filtered messages type
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        const lastUserMessage = messages
-            .filter((m: { role: string }) => m.role === "user")
-            .pop();
-
-        // If we have processed documents and a user query, perform retrieval
-        if (processedDocsInfo.length > 0 && lastUserMessage) {
-            // For each processed document, get relevant chunks
-            for (const docInfo of processedDocsInfo) {
-                try {
-                    const relevantChunks = await queryDocument(
-                        docInfo.id,
-                        lastUserMessage.content,
-                        3
-                    );
-
-                    if (relevantChunks.length > 0) {
-                        // Create context from relevant chunks
-                        const contextFromDoc = relevantChunks
-                            .map(
-                                (chunk) =>
-                                    `--- From document "${docInfo.fileName}" ---\n${chunk.pageContent}\n`
-                            )
-                            .join("\n");
-
-                        documentContext += contextFromDoc + "\n\n";
-                    }
-                } catch (queryError) {
-                    console.error(
-                        `Error querying document ${docInfo.id}:`,
-                        queryError
-                    );
-                }
-            }
-        }
-
-        // Create a system message that includes file content information
-        let systemMessage: Message = {
-            role: "system",
-            content: 'You are Lumos, a helpful AI assistant that can analyze various types of files including documents, images, and data. ' +
-            'When providing mathematical expressions, always use LaTeX notation surrounded by $ for inline math or $$ for block math. ' +
-            'Follow these rules for mathematical expressions:\n' +
-            '1. Always use $\\text{sin}(x)$, $\\text{cos}(x)$, etc. for trigonometric functions (with \\text{})\n' +
-            '2. Use proper fractions like $\\frac{a}{b}$ with curly braces, never $\\frac ab$\n' +
-            '3. For derivatives, use $\\frac{d}{dx}$ notation with curly braces\n' +
-            '4. For subscripts and superscripts with multiple characters, use curly braces: $x_{123}$ not $x_123$\n' +
-            '5. For equations with = signs, always wrap in math delimiters: $a = b + c$\n' +
-            '6. For matrices and tables, use $$ delimiters (block math)\n' +
-            '7. For math problems from uploaded files, be extra careful to use proper LaTeX formatting in your answers\n' +
-            '8. When solving math problems, wrap each equation and mathematical expression with appropriate $ delimiters\n' +
-            '9. For coordinate points, always write them as $(x, y)$ with delimiters\n' +
-            '10. For equations containing square brackets like [x^2 - y + 1 = 0], convert them to $x^2 - y + 1 = 0$\n' +
-            '11. When writing steps for solving math problems, add delimiters to all mathematical expressions\n' +
-            '12. When solving uploaded math problems with derivatives, always format expressions like $\\frac{dy}{dx}$ and $\\frac{d}{dx}(x^2)$ with proper LaTeX\n' +
-            '13. For implicit differentiation steps, format expressions like $2x - y - x\\frac{dy}{dx} + 2y\\frac{dy}{dx} = 0$ with proper delimiters\n' +
-            '14. Always wrap expressions in square brackets with math delimiters: $expression$ (not $[expression]$)\n' +
-            '15. When solving calculus problems, ensure all derivatives, integrals, and limits use proper LaTeX notation with delimiters\n' +
-            '16. For normal line problems, always format expressions like $x^2 - xy + y^2 = 36$ with proper delimiters\n' +
-            '17. When solving implicit differentiation problems, always wrap each step in proper math delimiters\n' +
-            '18. For any expression containing \\frac, ensure it is wrapped in $ delimiters\n' +
-            '19. When writing coordinate points like (6, 6), always format as $(6, 6)$ with delimiters\n' +
-            '20. For variable substitutions like (x = 6), always format as $(x = 6)$ with delimiters\n' +
-            '21. When solving step-by-step problems, use the format "1. Step description: $math expression$"\n' +
-            '22. For implications in equations, use $\\implies$ symbol: $x = 2 \\implies x^2 = 4$\n' +
-            '23. When writing solutions to uploaded problems, format them exactly like ChatGPT does, with clean LaTeX math expressions\n' +
-            '24. Use display math ($$...$$) for important equations that should be centered on their own line\n' +
-            '25. For step-by-step solutions, number each step and ensure all math is properly formatted with LaTeX'
+        // Default response function - overridden based on the model
+        let generateModelResponse = async (messages: any[], temperature: number, maxTokens: number) => {
+            throw new Error("No model implementation selected");
         };
 
+        let finalMessages = [...messages];
+
+        // Add system message if it doesn't exist
+        if (!finalMessages.some((m) => m.role === "system")) {
+            finalMessages.unshift({
+                role: "system",
+                content: DEFAULT_SYSTEM_MESSAGE,
+            });
+        }
+
+        // Process any uploaded files
         if (files && files.length > 0) {
+            const processResult = await processFiles(files);
+            
+            const { contents, hasUnprocessableFiles, hasImageFiles, imageUrls } = processResult;
+
             if (hasUnprocessableFiles) {
-                systemMessage.content += `\n\nThe user has uploaded some complex files. Do your best to analyze them with the provided information.`;
+                // Add warning about unprocessable files to the system message
+                const warningSystem = finalMessages.find(m => m.role === 'system');
+                if (warningSystem) {
+                    warningSystem.content += "\n\nNote: Some files could not be processed due to their format or size limitations. Please use compatible file formats and keep files under size limits.";
+                }
             }
 
-            if (fileContents) {
-                systemMessage.content += `\n\nThe user has uploaded the following files. Here's the content of these files: \n${fileContents}\n\nPlease help the user analyze and understand these files. Answer their questions based on the content.`;
-            }
+            if (contents && contents.trim()) {
+                // Add file content to the first user message
+                const firstUserMessageIndex = finalMessages.findIndex(m => m.role === 'user');
 
-            // Add RAG retrieved content if available
-            if (documentContext) {
-                systemMessage.content += `\n\nThe following specific information is retrieved from the user's documents based on their query:\n\n${documentContext}\n\nYour answer should prioritize this retrieved information.`;
-            }
-
-            // Log the first 500 characters of the system message to check if file contents are included
-            console.log(
-                "System message preview (first 500 chars):",
-                (systemMessage.content as string).substring(0, 500)
-            );
-            console.log("System message length:", (systemMessage.content as string).length);
-
-            // Check if the system message contains Java code markers
-            const containsJavaCode = (systemMessage.content as string).includes("```java");
-            console.log(
-                "System message contains Java code blocks:",
-                containsJavaCode
-            );
-
-            // Add specific instructions for Java files
-            if (containsJavaCode) {
-                systemMessage.content += `\n\nIMPORTANT: The uploaded files include Java code. You should analyze this code by explaining:
-1. The classes and their relationships
-2. The methods and their purposes
-3. The functionality of the code
-4. Any design patterns or notable features in the implementation`;
-            }
-
-            // Check if the system message contains C++ code markers
-            const containsCppCode =
-                (systemMessage.content as string).includes("```cpp") ||
-                (systemMessage.content as string).includes("```c") ||
-                (systemMessage.content as string).includes("```h") ||
-                (systemMessage.content as string).includes("```hpp");
-            console.log(
-                "System message contains C++ code blocks:",
-                containsCppCode
-            );
-
-            // Add specific instructions for C++ files
-            if (containsCppCode) {
-                systemMessage.content += `\n\nIMPORTANT: The uploaded files include C++ code. You should analyze this code by explaining:
-1. The functions, classes, and their relationships
-2. The purpose of each component
-3. The overall functionality of the code
-4. Memory management and pointer usage
-5. Any algorithms or data structures used
-6. Potential optimization opportunities or issues`;
-            }
-
-            // Check if the system message contains Python code markers
-            const containsPythonCode =
-                (systemMessage.content as string).includes("```python") ||
-                (systemMessage.content as string).includes("```py");
-            console.log(
-                "System message contains Python code blocks:",
-                containsPythonCode
-            );
-
-            // Add specific instructions for Python files
-            if (containsPythonCode) {
-                systemMessage.content += `\n\nIMPORTANT: The uploaded files include Python code. You should analyze this code by explaining:
-1. The functions, classes, and their relationships
-2. The purpose of each component
-3. The overall functionality of the code
-4. Any libraries or frameworks used
-5. Potential optimizations or Pythonic improvements`;
-            }
-
-            // Check if the system message contains JavaScript/TypeScript code markers
-            const containsJsCode =
-                (systemMessage.content as string).includes("```js") ||
-                (systemMessage.content as string).includes("```jsx") ||
-                (systemMessage.content as string).includes("```ts") ||
-                (systemMessage.content as string).includes("```tsx");
-            console.log(
-                "System message contains JavaScript/TypeScript code blocks:",
-                containsJsCode
-            );
-
-            // Add specific instructions for JavaScript/TypeScript files
-            if (containsJsCode) {
-                systemMessage.content += `\n\nIMPORTANT: The uploaded files include JavaScript/TypeScript code. You should analyze this code by explaining:
-1. The functions, objects, and their relationships
-2. Any frameworks or libraries being used
-3. The overall functionality of the code
-4. Async patterns and error handling
-5. Type definitions (for TypeScript)
-6. Potential optimizations or best practices`;
-            }
-
-            // Check for other programming languages using regex
-            const codeBlockRegex = /```([a-zA-Z0-9]+)\n/g;
-            const matches = [...(systemMessage.content as string).matchAll(codeBlockRegex)];
-            const languagesFound = matches
-                .map((match) => match[1])
-                .filter(
-                    (lang) =>
-                        ![
-                            "java",
-                            "cpp",
-                            "c",
-                            "h",
-                            "hpp",
-                            "python",
-                            "py",
-                            "js",
-                            "jsx",
-                            "ts",
-                            "tsx",
-                        ].includes(lang.toLowerCase())
-                );
-
-            // Add instructions for other programming languages if found
-            if (languagesFound.length > 0) {
-                // Get unique languages
-                const uniqueLanguages = [...new Set(languagesFound)];
-                // Get friendly language names where possible
-                const friendlyNames = uniqueLanguages.map((ext) =>
-                    getLanguageFromExtension(ext) !== "Unknown"
-                        ? getLanguageFromExtension(ext)
-                        : ext
-                );
-
-                systemMessage.content += `\n\nIMPORTANT: The uploaded files include code in the following languages: ${friendlyNames.join(
-                    ", "
-                )}. For each language, please:
-1. Identify the main components and their relationships
-2. Explain the functionality and purpose of the code
-3. Analyze any language-specific patterns or features
-4. Point out any notable algorithms or data structures
-5. Suggest improvements or optimizations where appropriate`;
-            }
-
-            // Check if the system message is too long
-            if ((systemMessage.content as string).length > 100000) {
-                console.log(
-                    "Warning: System message is very long:",
-                    (systemMessage.content as string).length,
-                    "characters"
-                );
-            }
-        }
-
-        // Format messages for API
-        const formattedMessages: Message[] = [
-            systemMessage,
-        ];
-
-        // For code files, add an explicit assistant message showing the file content
-        // This ensures code files are visible to the model even if there's an issue with the system message
-        if (files && files.length > 0) {
-            const codeFiles = files.filter(
-                (file: FileData) =>
-                    file.name.endsWith(".java") ||
-                    file.name.endsWith(".py") ||
-                    file.name.endsWith(".js") ||
-                    file.name.endsWith(".ts") ||
-                    file.name.endsWith(".cpp") ||
-                    file.name.endsWith(".c") ||
-                    file.name.endsWith(".h") ||
-                    file.name.endsWith(".hpp") ||
-                    file.name.endsWith(".cs") ||
-                    file.name.endsWith(".go") ||
-                    file.name.endsWith(".rs") ||
-                    file.name.endsWith(".rb") ||
-                    file.name.endsWith(".php") ||
-                    file.name.endsWith(".swift") ||
-                    file.name.endsWith(".kt") ||
-                    file.name.endsWith(".scala")
-            );
-
-            if (codeFiles.length > 0) {
-                for (const file of codeFiles) {
-                    try {
-                        const base64Content = file.content.split(",")[1];
-                        const content = Buffer.from(
-                            base64Content,
-                            "base64"
-                        ).toString("utf-8");
-                        const fileExt =
-                            file.name.split(".").pop()?.toLowerCase() || "";
-
-                        // Add detailed information for different programming languages
-                        let languageDescription =
-                            getLanguageFromExtension(fileExt);
-                        let additionalInfo = "";
-
-                        // Add language-specific context
-                        if (
-                            fileExt === "cpp" ||
-                            fileExt === "c" ||
-                            fileExt === "h" ||
-                            fileExt === "hpp"
-                        ) {
-                            additionalInfo =
-                                " I'll analyze the data structures, memory management, and algorithms in this code.";
-                        } else if (fileExt === "java") {
-                            additionalInfo =
-                                " I'll examine the classes, methods, and object-oriented design.";
-                        } else if (fileExt === "py") {
-                            additionalInfo =
-                                " I'll look at the functionality and any libraries or frameworks used.";
-                        } else if (fileExt === "js" || fileExt === "ts") {
-                            additionalInfo =
-                                " I'll examine the functionality, any frameworks used, and code structure.";
-                        }
-
-                        // Add an assistant message that explicitly shows the code
-                        formattedMessages.push({
-                            role: "assistant",
-                            content: `I see you've uploaded a ${languageDescription} file named ${file.name}.${additionalInfo} Here's the content:\n\n\`\`\`${fileExt}\n${content}\n\`\`\``,
-                        });
-
-                        console.log(
-                            `Added explicit assistant message for ${file.name}`
+                if (firstUserMessageIndex >= 0) {
+                    // If user message is just text
+                    if (typeof finalMessages[firstUserMessageIndex].content === 'string') {
+                        finalMessages[firstUserMessageIndex].content = `${finalMessages[firstUserMessageIndex].content}\n\nHere are the file contents to analyze:\n\n${contents}`;
+                    } 
+                    // If it's already an array of content items
+                    else if (Array.isArray(finalMessages[firstUserMessageIndex].content)) {
+                        // Get all text items to modify
+                        const textItems = finalMessages[firstUserMessageIndex].content.filter(
+                            (item: ContentItem) => item.type === 'text'
                         );
-                    } catch (error) {
-                        console.error(
-                            `Error adding explicit message for ${file.name}:`,
-                            error
-                        );
-                    }
-                }
-            }
-        }
-
-        // Add user messages with appropriate content format
-        if (messages && Array.isArray(messages)) {
-            for (const msg of messages) {
-                if (
-                    msg &&
-                    typeof msg.role === "string" &&
-                    (msg.role === "user" ||
-                        msg.role === "assistant" ||
-                        msg.role === "system")
-                ) {
-                    formattedMessages.push({
-                        role: msg.role as "user" | "assistant" | "system",
-                        content: msg.content || "",
-                    });
-                }
-            }
-        }
-
-        // Handle the case where there are image files
-        if (hasImageFiles && imageUrls.length > 0) {
-            // Find the last user message index
-            let lastUserMessageIndex = -1;
-            for (let i = formattedMessages.length - 1; i >= 0; i--) {
-                if (formattedMessages[i].role === "user") {
-                    lastUserMessageIndex = i;
-                    break;
-                }
-            }
-
-            if (lastUserMessageIndex !== -1) {
-                // Create a content array that includes images
-                const contentArray: any[] = [];
-
-                // Add the text content
-                const currentContent =
-                    formattedMessages[lastUserMessageIndex].content;
-                contentArray.push({
-                    type: "text",
-                    text:
-                        typeof currentContent === "string"
-                            ? currentContent
-                            : "Please analyze these files",
-                });
-
-                // Add each image, making sure the URL is valid and NOT a PDF
-                for (const img of imageUrls) {
-                    if (img.url && img.url.startsWith("data:")) {
-                        // Check if it's a PDF being sent as an image
-                        const isPdf =
-                            img.name.startsWith("PDF document:") || 
-                            img.name.includes("PDF document") ||
-                            (img.name &&
-                                img.name.toLowerCase().includes("pdf"));
-
-                        // Add a special message if it's a PDF being treated as an image
-                        if (isPdf) {
-                            // Add text explaining this is a PDF
-                            contentArray.push({
-                                type: "text",
-                                text: `I've attached a PDF document named "${img.name}". This is a visual representation of the PDF content. Please analyze what you can see in this document, including text content, form fields, headers, logos, tables, and any other visual elements you can identify.\n\n`,
+                        
+                        if (textItems.length > 0) {
+                            textItems[0].text = `${textItems[0].text}\n\nHere are the file contents to analyze:\n\n${contents}`;
+                        } else {
+                            finalMessages[firstUserMessageIndex].content.push({
+                                type: 'text',
+                                text: `Here are the file contents to analyze:\n\n${contents}`
                             });
                         }
+                    }
+                } else {
+                    // If no user message found, add a new one
+                    finalMessages.push({
+                        role: 'user',
+                        content: `Here are the file contents to analyze:\n\n${contents}`
+                    });
+                }
+            }
 
-                        // Add the image/PDF content
-                        contentArray.push({
-                            type: "image_url",
+            // Add any image URLs as image content to a message
+            if (imageUrls && imageUrls.length > 0 && (model?.includes('gemini') || !model)) {
+                const firstUserMessage = finalMessages.find(m => m.role === 'user');
+                
+                if (firstUserMessage) {
+                    // For Gemini, we need to convert to multimodal format
+                    let newContent = [];
+                    
+                    // If the first user message is a string, convert it to a text content item
+                    if (typeof firstUserMessage.content === 'string') {
+                        newContent.push({
+                            type: 'text',
+                            text: firstUserMessage.content
+                        });
+                    } 
+                    // If it's already an array, use it as is
+                    else if (Array.isArray(firstUserMessage.content)) {
+                        newContent = [...firstUserMessage.content];
+                    }
+                    
+                    // Add the image URLs as content items
+                    for (const imageUrl of imageUrls) {
+                        newContent.push({
+                            type: 'image_url',
                             image_url: {
-                                url: img.url,
-                                detail: "high",
-                            },
-                        });
-                    }
-                }
-
-                // Replace the content with the array if we have valid images
-                if (contentArray.length > 1) {
-                    formattedMessages[lastUserMessageIndex].content =
-                        contentArray;
-                }
-            }
-
-            // Only use the vision model if we actually have real images or PDFs
-            const validImageCount = imageUrls.filter(
-                (img) => img.url && img.url.startsWith("data:image/")
-            ).length;
-
-            // Check if we have PDFs that should be processed visually
-            const hasPdfsForVisualProcessing = imageUrls.some(
-                (img) => img.name.startsWith('PDF document:')
-            );
-
-            if (validImageCount > 0 || hasPdfsForVisualProcessing) {
-                // Use a vision-capable model
-                try {
-                    console.log(
-                        "Using gemini-2.0-flash for processing images/PDFs"
-                    );
-                    
-                    // Generate cache key for vision model requests
-                    const cacheKey = generateCacheKey(formattedMessages as any, GEMINI_MODELS.GEMINI_FLASH);
-                    const cachedEntry = responseCache.get(cacheKey);
-                    
-                    // Use cached response if available and valid
-                    if (cachedEntry && isCacheValid(cachedEntry)) {
-                        console.log("Using cached vision model response");
-                        return NextResponse.json({
-                            ...cachedEntry!.response,
-                            _cached: true,
-                            pdfStats
-                        });
-                    }
-                    
-                    // If no cache hit, make the API call
-                    console.log("Making multimodal API call with gemini-2.0-flash");
-                    
-                    // Use the multimodal function with the flash model for handling images
-                    const response = await generateMultimodalResponse(
-                        formattedMessages as any,
-                        GEMINI_MODELS.GEMINI_FLASH,
-                        0.7,
-                        3000
-                    ) as any;
-                    
-                    // Cache the response
-                    responseCache.set(cacheKey, {
-                        response: response,
-                        timestamp: Date.now()
-                    });
-
-                    // Log PDF stats
-                    console.log(
-                        "PDF Processing Statistics:",
-                        JSON.stringify(pdfStats, null, 2)
-                    );
-
-                    // Return the multimodal response with NextResponse
-                    return NextResponse.json(response.choices[0].message);
-                } catch (error) {
-                    console.error("Error with vision model:", error);
-
-                    // Create a simple text-only version of messages for fallback
-                    const fallbackMessages = formattedMessages.map((msg) => {
-                        return {
-                            role: msg.role,
-                            content:
-                                typeof msg.content === "string"
-                                    ? msg.content
-                                    : "Please analyze the files that were uploaded. I cannot show you the images directly.",
-                        };
-                    });
-
-                    // Use a simpler model with shorter outputs but still use the flash model
-                    const fallbackModel = GEMINI_MODELS.GEMINI_FLASH;
-                    
-                    // If the error is a timeout or rate limit, use a simpler model
-                    if (error instanceof Error && 
-                        (error.message.includes('timeout') || 
-                         error.message.includes('rate limit') ||
-                         error.message.includes('429'))) {
-                        console.log('Falling back after timeout or rate limit, but still using gemini-2.0-flash');
-                        
-                        // Still use the flash model but with reduced token count
-                        return NextResponse.json({
-                            role: 'assistant',
-                            content: await generateGeminiResponse(
-                                fallbackMessages as any,
-                                GEMINI_MODELS.GEMINI_FLASH,
-                                0.7,
-                                500 // Limit token count for fallback
-                            ).then(res => res.choices[0].message.content)
-                        });
-                    }
-                    
-                    // Fall back to regular model if multimodal processing fails
-                    const fallbackResponse = await callModelWithTimeout(
-                        fallbackMessages as any,
-                        fallbackModel,
-                        0.7,
-                        3000
-                    ) as any; // Type assertion
-
-                    // Add detailed PDF metrics to response if we processed PDFs
-                    return NextResponse.json(
-                        pdfStats.totalCount > 0
-                            ? {
-                                ...fallbackResponse.choices[0].message,
-                                __debug:
-                                    process.env.NODE_ENV === "development"
-                                        ? {
-                                            pdfStats,
-                                            modelUsed: fallbackModel,
-                                        }
-                                        : undefined,
+                                url: imageUrl.url,
+                                detail: 'auto' // or 'low' or 'high'
                             }
-                            : fallbackResponse.choices[0].message
-                    );
+                        });
+                    }
+                    
+                    // Update the message content
+                    firstUserMessage.content = newContent;
                 }
-            } else {
-                // If we only have PDFs, use the standard text model
-                const response = await callModelWithTimeout(
-                    formattedMessages as any,
-                    GEMINI_MODELS.GEMINI_FLASH,
-                    0.7,
-                    3000
-                ) as any; // Type assertion
-
-                // Log PDF stats
-                console.log(
-                    "PDF Processing Statistics:",
-                    JSON.stringify(pdfStats, null, 2)
-                );
-
-                // Log information about the messages sent to Gemini
-                console.log(
-                    "Messages sent to Gemini:",
-                    formattedMessages.map((msg) => ({
-                        role: msg.role,
-                        contentType: typeof msg.content,
-                        contentLength:
-                            typeof msg.content === "string"
-                                ? msg.content.length
-                                : "array",
-                        contentPreview:
-                            typeof msg.content === "string"
-                                ? msg.content.substring(0, 100) + "..."
-                                : "array content",
-                    }))
-                );
-
-                // Add detailed PDF metrics to response
-                return NextResponse.json(
-                    pdfStats.totalCount > 0
-                        ? {
-                              ...response.choices[0].message,
-                              __debug:
-                                  process.env.NODE_ENV === "development"
-                                      ? {
-                                            pdfStats,
-                                            modelUsed: GEMINI_MODELS.GEMINI_FLASH,
-                                            note: "Used text model because no valid images were found",
-                                        }
-                                      : undefined,
-                          }
-                        : response.choices[0].message
-                );
             }
+        }
+
+        // Select model implementation
+        if (!model || model.includes('gemini')) {
+            // Use Gemini
+            if (hasMultimodalContent(finalMessages)) {
+                // Use vision-capable Gemini for multimodal content
+                generateModelResponse = async (messages, temperature, maxTokens) => {
+                    return await generateMultimodalResponse(messages, GEMINI_MODELS.GEMINI_FLASH, temperature, maxTokens, useGroundingSearch);
+                };
+            } else {
+                // Use standard Gemini for text-only
+                generateModelResponse = async (messages, temperature, maxTokens) => {
+                    return await callGeminiWithTimeout(messages, GEMINI_MODELS.GEMINI_FLASH, temperature, maxTokens, useGroundingSearch);
+                };
+            }
+        } else if (model.includes('gpt')) {
+            // Use OpenAI
+            generateModelResponse = async (messages, temperature, maxTokens) => {
+                return await callOpenAI(messages, model, temperature, maxTokens, apiKey);
+            };
         } else {
-            // Standard text processing
+            return NextResponse.json(
+                { error: `Unsupported model: ${model}` },
+                { status: 400 }
+            );
+        }
+
+        // Generate the response
+        const response = await generateModelResponse(
+            finalMessages,
+            temperature,
+            maxTokens
+        );
+
+        // For streamed responses, we need to save them to the conversation
+        // For now just save to the conversation if a conversationId was provided
+        if (conversationId && userId) {
             try {
-                console.log("Using standard text processing with timeout");
-                const response = await callModelWithTimeout(
-                    formattedMessages as any,
-                    GEMINI_MODELS.GEMINI_FLASH,
-                    0.7,
-                    3000
-                ) as any; // Type assertion
-
-                // Log information about the messages sent to Gemini
-                console.log(
-                    "Messages sent to Gemini:",
-                    formattedMessages.map((msg) => ({
-                        role: msg.role,
-                        contentType: typeof msg.content,
-                        contentLength:
-                            typeof msg.content === "string"
-                                ? msg.content.length
-                                : "array",
-                        contentPreview:
-                            typeof msg.content === "string"
-                                ? msg.content.substring(0, 100) + "..."
-                                : "array content",
-                    }))
-                );
-
-                // Add detailed PDF metrics to response if we processed PDFs
-                return NextResponse.json(
-                    pdfStats.totalCount > 0
-                        ? {
-                              ...response.choices[0].message,
-                              __debug:
-                                  process.env.NODE_ENV === "development"
-                                      ? {
-                                            pdfStats,
-                                            modelUsed: GEMINI_MODELS.GEMINI_FLASH,
-                                        }
-                                      : undefined,
-                          }
-                        : response.choices[0].message
+                // Save message
+                await saveMessageToConversation(
+                    conversationId,
+                    finalMessages[finalMessages.length - 1],
+                    response.choices[0].message,
+                    userId
                 );
             } catch (error) {
-                console.error("Error in text processing:", error);
-                // Fallback to an extremely simple response
-                return NextResponse.json({
-                    role: "assistant",
-                    content: "I'm sorry, but I couldn't process your request due to a server timeout. Please try again with a smaller file or simpler query."
-                });
+                console.error('Error saving message to conversation:', error);
+                // Don't fail the request if this fails
             }
         }
 
-        // For non-image files, make sure they're included directly in the user message
-        // Find the last user message index again to ensure we're working with the updated message structure
-        if (files && files.length > 0 && fileContents && !hasImageFiles) {
-            let lastUserMessageIndex = -1;
-            for (let i = formattedMessages.length - 1; i >= 0; i--) {
-                if (formattedMessages[i].role === "user") {
-                    lastUserMessageIndex = i;
-                    break;
-                }
-            }
-
-            if (lastUserMessageIndex !== -1) {
-                // Get current content
-                const currentContent =
-                    formattedMessages[lastUserMessageIndex].content;
-                let userContent =
-                    typeof currentContent === "string"
-                        ? currentContent
-                        : "Please analyze these files";
-
-                // Append file content directly to the user message
-                userContent +=
-                    "\n\nHere are the file contents:\n" + fileContents;
-
-                // Add a specific note for Java files to ensure they are recognized
-                if (fileContents.includes("```java")) {
-                    userContent +=
-                        "\n\nNOTE: The content above includes Java code. Please analyze it and explain what it does.";
-                }
-
-                // Add a specific note for C++ files
-                if (
-                    fileContents.includes("```cpp") ||
-                    fileContents.includes("```c") ||
-                    fileContents.includes("```h") ||
-                    fileContents.includes("```hpp")
-                ) {
-                    userContent +=
-                        "\n\nNOTE: The content above includes C++ code. Please analyze the algorithms, data structures, memory management, and overall functionality.";
-                }
-
-                // Add a specific note for Python files
-                if (
-                    fileContents.includes("```python") ||
-                    fileContents.includes("```py")
-                ) {
-                    userContent +=
-                        "\n\nNOTE: The content above includes Python code. Please analyze it and explain the functionality, design patterns, and any libraries being used.";
-                }
-
-                // Add a specific note for JavaScript/TypeScript files
-                if (
-                    fileContents.includes("```js") ||
-                    fileContents.includes("```jsx") ||
-                    fileContents.includes("```ts") ||
-                    fileContents.includes("```tsx")
-                ) {
-                    userContent +=
-                        "\n\nNOTE: The content above includes JavaScript/TypeScript code. Please analyze it, including any frameworks, async patterns, and overall functionality.";
-                }
-
-                // Generic note for any other programming languages
-                const codeBlockRegex = /```([a-zA-Z0-9]+)\n/g;
-                const matches = [...fileContents.matchAll(codeBlockRegex)];
-                const languagesFound = matches
-                    .map((match) => match[1])
-                    .filter(
-                        (lang) =>
-                            ![
-                                "java",
-                                "cpp",
-                                "c",
-                                "h",
-                                "hpp",
-                                "python",
-                                "py",
-                                "js",
-                                "jsx",
-                                "ts",
-                                "tsx",
-                            ].includes(lang.toLowerCase())
-                    );
-
-                if (languagesFound.length > 0) {
-                    // Get unique languages
-                    const uniqueLanguages = [...new Set(languagesFound)];
-                    // Get friendly language names where possible
-                    const friendlyNames = uniqueLanguages.map((ext) =>
-                        getLanguageFromExtension(ext) !== "Unknown"
-                            ? getLanguageFromExtension(ext)
-                            : ext
-                    );
-
-                    userContent += `\n\nNOTE: The content above includes code in the following languages: ${friendlyNames.join(
-                        ", "
-                    )}. Please analyze the code structure, functionality, and purpose.`;
-                }
-
-                console.log(
-                    "Enhanced user message with file contents, new length:",
-                    userContent.length
-                );
-
-                // Update the message
-                formattedMessages[lastUserMessageIndex].content = userContent;
-            }
+        // Add grounding metadata to the response if available
+        let groundingSources = null;
+        if (useGroundingSearch && response.groundingMetadata) {
+            groundingSources = response.groundingMetadata;
         }
 
-        // Process the user's message to detect dataset generation requests
-        const userMessage = messages[messages.length - 1];
-        if (userMessage.role === 'user') {
-            // Define types for message content items
-            type ContentItem = {
-                type: string;
-                text?: string;
-                image_url?: { url: string };
-            };
-            
-            const content = typeof userMessage.content === 'string' 
-                ? userMessage.content 
-                : Array.isArray(userMessage.content) 
-                    ? userMessage.content.filter((item: ContentItem) => item.type === 'text').map((item: ContentItem) => item.text || '').join(' ')
-                    : '';
+        // Ensure we have a valid content field
+        const content = response.choices?.[0]?.message?.content || "";
 
-            // Check for dataset generation requests
-            const datasetRegex = /generate\s+(?:a|an)\s+(?<rows>\d+)?\s*(?:row)?\s*(?<format>\w+)?\s*(?:dataset|data\s*set)/i;
-            const match = content.match(datasetRegex);
-
-            if (match) {
-                // Extract parameters from the request
-                const format = match.groups?.format || 'csv';
-                const rows = parseInt(match.groups?.rows || '10', 10);
-
-                // Extract schema information if provided
-                const schemaRegex = /with\s+(?:columns|fields)\s+(?<schema>.*?)(?:$|in\s+|format\s+|with\s+)/i;
-                const schemaMatch = content.match(schemaRegex);
-                
-                let schema: Record<string, string> = {};
-                if (schemaMatch && schemaMatch.groups?.schema) {
-                    // Parse the schema from the message
-                    const schemaText = schemaMatch.groups.schema;
-                    const columnRegex = /(\w+)\s+(?:as\s+)?(\w+)/g;
-                    let columnMatch;
-                    
-                    while ((columnMatch = columnRegex.exec(schemaText)) !== null) {
-                        const [_, columnName, columnType] = columnMatch;
-                        schema[columnName] = columnType;
-                    }
-                }
-
-                // If no schema was provided or parsed, use default schema
-                if (Object.keys(schema).length === 0) {
-                    schema = {
-                        id: 'integer',
-                        name: 'string',
-                        value: 'float'
-                    };
-                }
-
-                // Generate the dataset
-                const dataset = generateRandomDataset({
-                    rows,
-                    format,
-                    schema,
-                    name: `${format}_dataset`,
-                    includeHeaders: true
-                });
-
-                console.log(`Generated ${format} dataset with ${rows} rows`);
-
-                // Create a response with the dataset in the proper format
-                const responseContent = `I've generated a ${rows}-row ${format.toUpperCase()} dataset for you. Here it is:
-
-\`\`\`dataset-${format}
-${dataset.content}
-\`\`\`
-
-You can download this file using the download button above.`;
-
-                // Return the response using NextResponse
-                return NextResponse.json({
-                    role: 'assistant',
-                    content: responseContent
-                });
-            }
-        }
-
-        // Prepare the messages for the API call
-        const apiMessages = [
-            ...formattedMessages,
-        ];
-
-        // Check if we have a cached response
-        const cacheKey = generateCacheKey(apiMessages, GEMINI_MODELS.GEMINI_FLASH);
-        const cachedEntry = responseCache.get(cacheKey);
-        
-        if (cachedEntry && isCacheValid(cachedEntry)) {
-            console.log("Using cached response");
-            return NextResponse.json(cachedEntry!.response);
-        }
-
-        // If no cache hit, make the API call
-        const response = await callModelWithTimeout(
-            apiMessages as any,
-            GEMINI_MODELS.GEMINI_FLASH,
-            0.7,
-            3000
-        ) as any; // Type assertion
-
-        // Cache the response
-        responseCache.set(cacheKey, {
-            response: response,
-            timestamp: Date.now()
+        // Return the response
+        return NextResponse.json({
+            content,
+            groundingSources
         });
 
-        // Ensure we return a NextResponse object
-        return NextResponse.json(response);
-    } catch (error) {
-        console.error("Error calling Gemini API:", error);
+    } catch (error: any) {
+        console.error("Error in chat API:", error);
+        
         return NextResponse.json(
             {
-                error: "Failed to communicate with AI. Please try again.",
-                details:
-                    error instanceof Error ? error.message : "Unknown error",
+                error: error.message || "An unknown error occurred",
             },
-            { status: 500 }
+            {
+                status: error.status || 500,
+            }
         );
     }
 }
+
+// Helper function to check if messages contain multimodal content
+const hasMultimodalContent = (messages: Message[]): boolean => {
+    return messages.some(message => {
+        if (Array.isArray(message.content)) {
+            return message.content.some(item => 
+                item.type === 'image_url' || 
+                item.type === 'image'
+            );
+        }
+        return false;
+    });
+};
 
 // Process files and extract their content
 async function processFiles(files: FileData[]): Promise<{

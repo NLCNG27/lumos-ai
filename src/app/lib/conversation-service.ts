@@ -1,7 +1,7 @@
 import { createServerSupabaseClient, supabase } from "./supabase";
 import { getSupabaseToken } from "./user-sync";
 import { auth } from "@clerk/nextjs/server";
-import { Message, ProcessedFile } from "../types";
+import { Message, ProcessedFile, GroundingSource } from "../types";
 
 // Server-side functions (to be used in API routes)
 export async function createConversationForUser(
@@ -56,7 +56,7 @@ export async function createConversationForUser(
 
 export async function saveMessageToConversation(
     conversationId: string,
-    message: Omit<Message, "id" | "timestamp"> & { timestamp?: Date }
+    message: Omit<Message, "id" | "timestamp"> & { timestamp?: Date; groundingSources?: GroundingSource[] }
 ) {
     const supabase = createServerSupabaseClient();
 
@@ -69,6 +69,7 @@ export async function saveMessageToConversation(
             content: message.content,
             created_at:
                 message.timestamp?.toISOString() || new Date().toISOString(),
+            metadata: message.groundingSources ? { groundingSources: message.groundingSources } : null,
         })
         .select()
         .single();
@@ -569,5 +570,6 @@ export async function getConversationMessages(conversationId: string) {
             previewUrl: file.preview_url,
             storage_path: file.storage_path
         })) : [],
+        groundingSources: message.metadata && message.metadata.groundingSources ? message.metadata.groundingSources : undefined,
     }));
 }

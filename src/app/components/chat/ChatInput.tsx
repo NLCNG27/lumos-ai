@@ -6,7 +6,7 @@ import { nanoid } from "nanoid";
 import { dispatchConversationUpdate } from "@/app/hooks/useChat";
 
 type ChatInputProps = {
-    onSendMessage: (message: string, files?: UploadedFile[]) => void;
+    onSendMessage: (message: string, files?: UploadedFile[], useGroundingSearch?: boolean) => void;
     isLoading: boolean;
 };
 
@@ -16,6 +16,7 @@ export default function ChatInput({
 }: ChatInputProps) {
     const [input, setInput] = useState("");
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+    const [useGroundingSearch, setUseGroundingSearch] = useState(false);
     const formRef = useRef<HTMLFormElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -31,7 +32,7 @@ export default function ChatInput({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if ((input.trim() || uploadedFiles.length > 0) && !isLoading) {
-            onSendMessage(input, uploadedFiles);
+            onSendMessage(input, uploadedFiles, useGroundingSearch);
             setInput("");
             setUploadedFiles([]);
         }
@@ -42,7 +43,7 @@ export default function ChatInput({
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             if ((input.trim() || uploadedFiles.length > 0) && !isLoading) {
-                onSendMessage(input, uploadedFiles);
+                onSendMessage(input, uploadedFiles, useGroundingSearch);
                 setInput("");
                 setUploadedFiles([]);
             }
@@ -149,72 +150,98 @@ export default function ChatInput({
         >
             <FilePreview files={uploadedFiles} onRemove={handleRemoveFile} />
 
-            <div className="flex items-center gap-2">
-                <FileUpload
-                    onFileSelect={handleFileSelect}
-                    isLoading={isLoading}
-                />
+            <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                    <FileUpload
+                        onFileSelect={handleFileSelect}
+                        isLoading={isLoading}
+                    />
 
-                <textarea
-                    ref={textareaRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={
-                        uploadedFiles.length > 0
-                            ? "Ask about your files or type a message... (Shift+Enter for new line)"
-                            : "Tell me what you need..."
-                    }
-                    className="flex-grow p-2 rounded-lg border border-gray-300 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[40px] max-h-[120px] resize-y"
-                    disabled={isLoading}
-                    rows={1}
-                />
+                    <textarea
+                        ref={textareaRef}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder={
+                            uploadedFiles.length > 0
+                                ? "Ask about your files or type a message... (Shift+Enter for new line)"
+                                : "Tell me what you need..."
+                        }
+                        className="flex-grow p-2 rounded-lg border border-gray-300 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[40px] max-h-[120px] resize-y"
+                        disabled={isLoading}
+                        rows={1}
+                    />
 
-                <button
-                    type="submit"
-                    disabled={
-                        isLoading ||
-                        (!input.trim() && uploadedFiles.length === 0)
-                    }
-                    className="bg-blue-500 text-white p-2 rounded-full disabled:opacity-50"
-                >
-                    {isLoading ? (
-                        <div className="flex items-center">
+                    <button
+                        type="submit"
+                        disabled={
+                            isLoading ||
+                            (!input.trim() && uploadedFiles.length === 0)
+                        }
+                        className="bg-blue-500 text-white p-2 rounded-full disabled:opacity-50"
+                    >
+                        {isLoading ? (
+                            <div className="flex items-center">
+                                <svg
+                                    className="animate-spin h-5 w-5"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <circle
+                                        className="opacity-25"
+                                        cx="12"
+                                        cy="12"
+                                        r="10"
+                                        stroke="currentColor"
+                                        strokeWidth="4"
+                                        fill="none"
+                                    ></circle>
+                                    <path
+                                        className="opacity-75"
+                                        fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                    ></path>
+                                </svg>
+                            </div>
+                        ) : (
                             <svg
-                                className="animate-spin h-5 w-5"
-                                viewBox="0 0 24 24"
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-5 w-5"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
                             >
-                                <circle
-                                    className="opacity-25"
-                                    cx="12"
-                                    cy="12"
-                                    r="10"
-                                    stroke="currentColor"
-                                    strokeWidth="4"
-                                    fill="none"
-                                ></circle>
                                 <path
-                                    className="opacity-75"
-                                    fill="currentColor"
-                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                ></path>
+                                    fillRule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z"
+                                    clipRule="evenodd"
+                                />
                             </svg>
+                        )}
+                    </button>
+                </div>
+
+                <div className="flex items-center mt-1">
+                    <label className="flex items-center text-sm text-gray-400 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={useGroundingSearch}
+                            onChange={(e) => setUseGroundingSearch(e.target.checked)}
+                            className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <div className="flex items-center">
+                            <span className="mr-1">Ground with Google Search</span>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9z" clipRule="evenodd" />
+                            </svg>
+                            <div className="group relative inline-block">
+                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none w-64">
+                                    <div className="bg-black text-white text-xs rounded py-2 px-3 shadow-md">
+                                        Enable Google Search grounding to get more accurate and up-to-date information for fact-based queries.
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    ) : (
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-5 w-5"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                        >
-                            <path
-                                fillRule="evenodd"
-                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z"
-                                clipRule="evenodd"
-                            />
-                        </svg>
-                    )}
-                </button>
+                    </label>
+                </div>
             </div>
         </form>
     );

@@ -4,6 +4,13 @@ export type Message = {
     role: 'user' | 'assistant';
     timestamp: Date;
     files?: ProcessedFile[];
+    groundingSources?: GroundingSource[];
+};
+
+export type GroundingSource = {
+    title: string;
+    link: string;
+    snippet: string;
 };
 
 export type ChatState = {

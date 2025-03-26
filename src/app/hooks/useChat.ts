@@ -228,6 +228,7 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
                         content: message.content,
                         role: message.role,
                         files: sanitizedFiles,
+                        groundingSources: message.groundingSources || undefined,
                     }),
                 }
             );
@@ -320,7 +321,7 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
     };
 
     const sendMessage = useCallback(
-        async (content: string, files?: UploadedFile[]) => {
+        async (content: string, files?: UploadedFile[], useGroundingSearch?: boolean) => {
             if (!content.trim() && (!files || files.length === 0)) return;
             if (!currentConversation) {
                 setError("No active conversation. Please refresh the page.");
@@ -395,6 +396,7 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
                     body: JSON.stringify({
                         messages: apiMessages,
                         files: fileData.length > 0 ? fileData : undefined,
+                        useGroundingSearch: useGroundingSearch || false,
                     }),
                 });
 
@@ -410,6 +412,7 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
                     content: aiMessage.content,
                     role: "assistant",
                     timestamp: new Date(),
+                    groundingSources: aiMessage.groundingSources,
                 };
 
                 // Add AI response to messages

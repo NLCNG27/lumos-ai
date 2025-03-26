@@ -49,16 +49,27 @@ const safetySettings = [
 ];
 
 // Helper function to get a model instance
-export function getGeminiModel(modelName = GEMINI_MODELS.GEMINI_FLASH) {
+export function getGeminiModel(modelName = GEMINI_MODELS.GEMINI_FLASH, enableGoogleSearch = false) {
   // Use GEMINI_FLASH as the default model
   const finalModel = Object.values(GEMINI_MODELS).includes(modelName as string) 
     ? modelName 
     : GEMINI_MODELS.GEMINI_FLASH;
     
-  const model = geminiAI.getGenerativeModel({
+  const modelConfig: any = {
     model: finalModel,
     safetySettings,
-  });
+  };
+
+  // Add Google Search tool if enabled
+  if (enableGoogleSearch && finalModel.includes('gemini-2.0')) {
+    modelConfig.tools = [
+      {
+        googleSearch: {}
+      }
+    ];
+  }
+  
+  const model = geminiAI.getGenerativeModel(modelConfig);
   return model;
 }
 
@@ -130,19 +141,34 @@ export async function generateGeminiResponse(
   messages: any[],
   modelName = GEMINI_MODELS.GEMINI_FLASH,
   temperature = 0.7,
-  maxOutputTokens = 3000
+  maxOutputTokens = 3000,
+  enableGoogleSearch = false
 ) {
-  const model = getGeminiModel(modelName);
+  const model = getGeminiModel(modelName, enableGoogleSearch);
   const geminiContents = convertToGeminiFormat(messages);
   
   try {
+    const generationConfig: any = {
+      temperature,
+      maxOutputTokens,
+    };
+
+    if (enableGoogleSearch) {
+      generationConfig.responseModalities = ["TEXT"];
+    }
+
     const result = await model.generateContent({
       contents: geminiContents,
-      generationConfig: {
-        temperature,
-        maxOutputTokens,
-      },
+      generationConfig,
     });
+    
+    let responseText = result.response.text();
+    let groundingMetadata = null;
+
+    // Extract grounding metadata if available
+    if (enableGoogleSearch && result.response.candidates?.[0]?.groundingMetadata) {
+      groundingMetadata = result.response.candidates[0].groundingMetadata;
+    }
     
     // Return in a format compatible with our API routes
     return {
@@ -150,13 +176,14 @@ export async function generateGeminiResponse(
         {
           message: {
             role: 'assistant',
-            content: result.response.text(),
+            content: responseText,
           },
           index: 0,
           finish_reason: "stop",
         }
       ],
       model: modelName,
+      groundingMetadata,
     };
   } catch (error) {
     console.error('Error generating Gemini response:', error);
@@ -169,7 +196,8 @@ export async function callGeminiWithTimeout(
   messages: any[],
   modelName = GEMINI_MODELS.GEMINI_FLASH,
   temperature = 0.7,
-  maxOutputTokens = 3000
+  maxOutputTokens = 3000,
+  enableGoogleSearch = false
 ) {
   // Create a timeout promise
   const timeoutPromise = new Promise((_, reject) => {
@@ -182,7 +210,7 @@ export async function callGeminiWithTimeout(
   try {
     // Race between the API call and the timeout
     const response = await Promise.race([
-      generateGeminiResponse(messages, modelName, temperature, maxOutputTokens),
+      generateGeminiResponse(messages, modelName, temperature, maxOutputTokens, enableGoogleSearch),
       timeoutPromise
     ]);
     
@@ -202,7 +230,8 @@ export async function callGeminiWithTimeout(
         messages, 
         GEMINI_MODELS.GEMINI_FLASH,
         temperature, 
-        500 // Reduced token count
+        500, // Reduced token count
+        enableGoogleSearch
       );
     }
     
@@ -215,10 +244,11 @@ export async function generateMultimodalResponse(
   messages: any[],
   modelName = GEMINI_MODELS.GEMINI_FLASH,
   temperature = 0.7,
-  maxOutputTokens = 3000
+  maxOutputTokens = 3000,
+  enableGoogleSearch = false
 ) {
   // Always use the Flash model for all content types (text and images)
-  const model = getGeminiModel(GEMINI_MODELS.GEMINI_FLASH);
+  const model = getGeminiModel(GEMINI_MODELS.GEMINI_FLASH, enableGoogleSearch);
   const geminiContents = convertToGeminiFormat(messages);
   
   try {
@@ -231,13 +261,27 @@ export async function generateMultimodalResponse(
       console.log('Processing request with image content using gemini-2.0-flash');
     }
     
+    const generationConfig: any = {
+      temperature,
+      maxOutputTokens,
+    };
+
+    if (enableGoogleSearch) {
+      generationConfig.responseModalities = ["TEXT"];
+    }
+
     const result = await model.generateContent({
       contents: geminiContents,
-      generationConfig: {
-        temperature,
-        maxOutputTokens,
-      },
+      generationConfig,
     });
+    
+    let responseText = result.response.text();
+    let groundingMetadata = null;
+
+    // Extract grounding metadata if available
+    if (enableGoogleSearch && result.response.candidates?.[0]?.groundingMetadata) {
+      groundingMetadata = result.response.candidates[0].groundingMetadata;
+    }
     
     // Return in a format compatible with our API routes
     return {
@@ -245,42 +289,17 @@ export async function generateMultimodalResponse(
         {
           message: {
             role: 'assistant',
-            content: result.response.text(),
+            content: responseText,
           },
           index: 0,
           finish_reason: "stop",
+          groundingMetadata,
         }
       ],
-      model: GEMINI_MODELS.GEMINI_FLASH,
+      model: modelName,
     };
   } catch (error) {
     console.error('Error generating multimodal Gemini response:', error);
-    
-    // Try falling back to text-only if there's an issue with processing images
-    try {
-      console.log('Falling back to text-only after model failure');
-      
-      // Filter out image content
-      const textOnlyMessages = messages.map(msg => {
-        if (typeof msg.content === 'string') {
-          return msg;
-        } else if (Array.isArray(msg.content)) {
-          return {
-            ...msg,
-            content: msg.content
-              .filter((item: any) => item.type === 'text')
-              .map((item: any) => item.text)
-              .join('\n')
-          };
-        }
-        return msg;
-      });
-      
-      // Still use the flash model, but without images
-      return await generateGeminiResponse(textOnlyMessages, GEMINI_MODELS.GEMINI_FLASH, temperature, maxOutputTokens);
-    } catch (fallbackError) {
-      console.error('Error in fallback to text model:', fallbackError);
-      throw error; // Throw the original error
-    }
+    throw error;
   }
 } 
