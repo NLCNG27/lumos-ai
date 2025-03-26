@@ -200,6 +200,8 @@ type TextContent = {
     text: string;
 };
 
+type ContentItem = TextContent | ImageContent;
+
 // Define our message format to avoid TypeScript errors
 interface Message {
     role: "system" | "user" | "assistant";
@@ -239,6 +241,14 @@ export async function POST(req: Request) {
           UseGroundingSearch: ${useGroundingSearch ? 'Yes' : 'No'}
         `);
 
+        // Function to validate API key format
+        function isValidAPIKey(key: string): boolean {
+            // For Gemini API keys:
+            // - Typically start with "AI" followed by alphanumeric characters
+            // - Usually about 40-50 characters long
+            return /^AIza[0-9A-Za-z-_]{35,40}$/.test(key);
+        }
+
         // Check if API key is provided and valid
         if (apiKey && !isValidAPIKey(apiKey)) {
             return NextResponse.json(
@@ -248,7 +258,7 @@ export async function POST(req: Request) {
         }
 
         // Default response function - overridden based on the model
-        let generateModelResponse = async (messages: any[], temperature: number, maxTokens: number) => {
+        let generateModelResponse = async (messages: any[], temperature: number, maxTokens: number): Promise<any> => {
             throw new Error("No model implementation selected");
         };
 
@@ -316,7 +326,7 @@ export async function POST(req: Request) {
                 
                 if (firstUserMessage) {
                     // For Gemini, we need to convert to multimodal format
-                    let newContent = [];
+                    let newContent: ContentItem[] = [];
                     
                     // If the first user message is a string, convert it to a text content item
                     if (typeof firstUserMessage.content === 'string') {
@@ -364,7 +374,9 @@ export async function POST(req: Request) {
         } else if (model.includes('gpt')) {
             // Use OpenAI
             generateModelResponse = async (messages, temperature, maxTokens) => {
-                return await callOpenAI(messages, model, temperature, maxTokens, apiKey);
+                // OpenAI integration not implemented yet
+                console.warn("OpenAI integration requested but not implemented");
+                throw new Error("OpenAI integration not implemented");
             };
         } else {
             return NextResponse.json(
@@ -380,6 +392,12 @@ export async function POST(req: Request) {
             maxTokens
         );
 
+        // Add grounding metadata to the response if available
+        let groundingSources = null;
+        if (useGroundingSearch && response.groundingMetadata) {
+            groundingSources = response.groundingMetadata;
+        }
+
         // For streamed responses, we need to save them to the conversation
         // For now just save to the conversation if a conversationId was provided
         if (conversationId && userId) {
@@ -387,20 +405,16 @@ export async function POST(req: Request) {
                 // Save message
                 await saveMessageToConversation(
                     conversationId,
-                    finalMessages[finalMessages.length - 1],
-                    response.choices[0].message,
-                    userId
+                    {
+                        role: response.choices[0].message.role,
+                        content: response.choices[0].message.content,
+                        groundingSources: groundingSources
+                    }
                 );
             } catch (error) {
                 console.error('Error saving message to conversation:', error);
                 // Don't fail the request if this fails
             }
-        }
-
-        // Add grounding metadata to the response if available
-        let groundingSources = null;
-        if (useGroundingSearch && response.groundingMetadata) {
-            groundingSources = response.groundingMetadata;
         }
 
         // Ensure we have a valid content field
@@ -430,10 +444,17 @@ export async function POST(req: Request) {
 const hasMultimodalContent = (messages: Message[]): boolean => {
     return messages.some(message => {
         if (Array.isArray(message.content)) {
-            return message.content.some(item => 
-                item.type === 'image_url' || 
-                item.type === 'image'
-            );
+            return message.content.some(item => {
+                if (typeof item === 'object' && item !== null) {
+                    // Check if it's an image URL type using a type guard
+                    if ('type' in item && typeof item.type === 'string') {
+                        return item.type.includes('image');
+                    }
+                    // Or directly check for image_url property
+                    return 'image_url' in item;
+                }
+                return false;
+            });
         }
         return false;
     });

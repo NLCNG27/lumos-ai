@@ -156,6 +156,35 @@ export default function ChatInput({
                         onFileSelect={handleFileSelect}
                         isLoading={isLoading}
                     />
+                    
+                    <button
+                        type="button"
+                        onClick={() => setUseGroundingSearch(!useGroundingSearch)}
+                        className="flex items-center justify-center h-8 w-8 text-sm rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                        aria-label={useGroundingSearch ? "Disable Google Search grounding" : "Enable Google Search grounding"}
+                    >
+                        <svg 
+                            xmlns="http://www.w3.org/2000/svg" 
+                            className={`h-5 w-5 ${useGroundingSearch ? "text-blue-600" : "text-gray-400"}`} 
+                            fill="none" 
+                            viewBox="0 0 24 24" 
+                            stroke="currentColor" 
+                            strokeWidth={1.5}
+                        >
+                            <path 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round" 
+                                d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" 
+                            />
+                        </svg>
+                        <div className="group relative inline-block">
+                            <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none w-64">
+                                <div className="bg-black text-white text-xs rounded py-2 px-3 shadow-md">
+                                    {useGroundingSearch ? "Google Search grounding is enabled" : "Enable Google Search grounding to get more accurate and up-to-date information for fact-based queries"}
+                                </div>
+                            </div>
+                        </div>
+                    </button>
 
                     <textarea
                         ref={textareaRef}
@@ -220,27 +249,7 @@ export default function ChatInput({
                 </div>
 
                 <div className="flex items-center mt-1">
-                    <label className="flex items-center text-sm text-gray-400 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={useGroundingSearch}
-                            onChange={(e) => setUseGroundingSearch(e.target.checked)}
-                            className="mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <div className="flex items-center">
-                            <span className="mr-1">Ground with Google Search</span>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9z" clipRule="evenodd" />
-                            </svg>
-                            <div className="group relative inline-block">
-                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none w-64">
-                                    <div className="bg-black text-white text-xs rounded py-2 px-3 shadow-md">
-                                        Enable Google Search grounding to get more accurate and up-to-date information for fact-based queries.
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </label>
+                    {/* Removed the web icon button from here */}
                 </div>
             </div>
         </form>
