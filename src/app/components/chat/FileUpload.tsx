@@ -57,8 +57,7 @@ export default function FileUpload({
                 type="button"
                 onClick={handleButtonClick}
                 disabled={isLoading}
-                className="p-2 text-gray-500 hover:text-blue-500 focus:outline-none disabled:opacity-50"
-                title="Upload files"
+                className="p-2 text-gray-500 hover:text-blue-500 focus:outline-none disabled:opacity-50 relative group"
             >
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -74,6 +73,11 @@ export default function FileUpload({
                         d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
                     />
                 </svg>
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                    <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 shadow-md whitespace-nowrap">
+                        Attach File
+                    </div>
+                </div>
             </button>
 
             <input
