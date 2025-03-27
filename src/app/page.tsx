@@ -126,12 +126,7 @@ export default function Home() {
                             priority
                             className="ml-0"
                         />
-                        {/* <Link 
-                            href="/code-interpreter" 
-                            className="text-sm font-medium text-white hover:text-blue-400 transition-colors duration-200"
-                        >
-                            Code Interpreter Test
-                        </Link> */}
+                        
                     </div>
 
                     <div className="flex items-center gap-4">
