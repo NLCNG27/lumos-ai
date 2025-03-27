@@ -14,13 +14,15 @@ function DeleteConfirmationModal({
   onClose, 
   onConfirm, 
   conversationTitle,
-  isDeleteAll = false 
+  isDeleteAll = false,
+  isDeleting = false
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
   onConfirm: () => void;
   conversationTitle: string;
   isDeleteAll?: boolean;
+  isDeleting?: boolean;
 }) {
   if (!isOpen) return null;
   
@@ -35,24 +37,40 @@ function DeleteConfirmationModal({
             <h3 className="text-lg font-medium">{isDeleteAll ? "Clear All Conversations" : "Delete Conversation"}</h3>
           </div>
           <p className="text-gray-300 mb-6">
-            {isDeleteAll 
-              ? "Are you sure you want to delete ALL conversations? This action cannot be undone."
-              : <>Are you sure you want to delete <span className="font-semibold">"{conversationTitle || 'this conversation'}"</span>? This action cannot be undone.</>
+            {isDeleting 
+              ? (isDeleteAll 
+                  ? "Deleting all conversations..." 
+                  : "Deleting conversation...") 
+              : (isDeleteAll 
+                  ? "Are you sure you want to delete ALL conversations? This action cannot be undone."
+                  : <>Are you sure you want to delete <span className="font-semibold">"{conversationTitle || 'this conversation'}"</span>? This action cannot be undone.</>
+                )
             }
           </p>
           <div className="flex justify-end space-x-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={onConfirm}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors"
-            >
-              {isDeleteAll ? "Delete All" : "Delete"}
-            </button>
+            {isDeleting ? (
+              <div className="flex items-center justify-center">
+                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={onConfirm}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors"
+                >
+                  {isDeleteAll ? "Delete All" : "Delete"}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -73,6 +91,7 @@ export default function ConversationSidebar({
   const [deleteAllModalOpen, setDeleteAllModalOpen] = useState(false);
   const [conversationToDelete, setConversationToDelete] = useState<Conversation | null>(null);
   const [titleRefreshes, setTitleRefreshes] = useState<Record<string, boolean>>({});
+  const [isDeleting, setIsDeleting] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [lastMessageTimestamp, setLastMessageTimestamp] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
@@ -320,6 +339,8 @@ export default function ConversationSidebar({
     if (!conversationToDelete) return;
     
     try {
+      setIsDeleting(true);
+      
       const response = await fetch(`/api/conversations/${conversationToDelete.id}`, {
         method: "DELETE",
       });
@@ -348,6 +369,8 @@ export default function ConversationSidebar({
     } catch (err: any) {
       console.error("Error deleting conversation:", err);
       alert("Failed to delete conversation. Please try again.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -447,6 +470,7 @@ export default function ConversationSidebar({
   // Add a function to clear all conversations
   const clearAllConversations = async () => {
     setLoading(true);
+    setIsDeleting(true);
     
     try {
       console.log("Starting clear all conversations process");
@@ -465,14 +489,8 @@ export default function ConversationSidebar({
         onSelectConversation("");
       }
       
-      // Set loading state to prevent quick actions
-      setLoading(true);
-      
       // Wait a moment to ensure state updates complete
       await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // First close the modal
-      setDeleteAllModalOpen(false);
       
       // Clear local conversations state immediately to improve UI responsiveness
       setConversations([]);
@@ -527,6 +545,9 @@ export default function ConversationSidebar({
       // alert('Failed to clear all conversations. Please try again.');
     } finally {
       setLoading(false);
+      setIsDeleting(false);
+      // Always close the modal
+      setDeleteAllModalOpen(false);
       // Always refresh conversations list
       fetchConversations();
     }
@@ -873,6 +894,7 @@ export default function ConversationSidebar({
         }}
         onConfirm={deleteConversation}
         conversationTitle={conversationToDelete?.title || ''}
+        isDeleting={isDeleting}
       />
 
       {/* Delete All Confirmation Modal */}
@@ -882,6 +904,7 @@ export default function ConversationSidebar({
         onConfirm={clearAllConversations}
         conversationTitle=""
         isDeleteAll={true}
+        isDeleting={isDeleting}
       />
     </>
   );
