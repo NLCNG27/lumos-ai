@@ -4,6 +4,7 @@ import FilePreview from "./FilePreview";
 import { UploadedFile } from "@/app/types";
 import { nanoid } from "nanoid";
 import { dispatchConversationUpdate } from "@/app/hooks/useChat";
+import CodeExecutionToggle from "../code/CodeExecutionToggle";
 
 type ChatInputProps = {
     onSendMessage: (message: string, files?: UploadedFile[], useGroundingSearch?: boolean) => void;
@@ -17,6 +18,7 @@ export default function ChatInput({
     const [input, setInput] = useState("");
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
     const [useGroundingSearch, setUseGroundingSearch] = useState(false);
+    const [useCodeExecution, setUseCodeExecution] = useState(true);
     const formRef = useRef<HTMLFormElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -183,6 +185,12 @@ export default function ChatInput({
                             </div>
                         </div>
                     </button>
+                    
+                    {/* Code Execution Toggle */}
+                    <CodeExecutionToggle 
+                        enabled={useCodeExecution}
+                        onChange={setUseCodeExecution}
+                    />
 
                     <textarea
                         ref={textareaRef}
@@ -246,8 +254,20 @@ export default function ChatInput({
                     </button>
                 </div>
 
-                <div className="flex items-center mt-1">
-                    {/* Removed the web icon button from here */}
+                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 px-1">
+                    <div>
+                        {useCodeExecution && (
+                            <span className="flex items-center gap-1">
+                                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                                Code execution enabled
+                            </span>
+                        )}
+                    </div>
+                    <div>
+                        {uploadedFiles.length > 0 && (
+                            <span>{uploadedFiles.length} file{uploadedFiles.length !== 1 ? 's' : ''} attached</span>
+                        )}
+                    </div>
                 </div>
             </div>
         </form>

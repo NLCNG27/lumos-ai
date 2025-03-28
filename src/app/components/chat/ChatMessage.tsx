@@ -1,4 +1,4 @@
-import { Message, ProcessedFile } from "@/app/types";
+import { Message, ProcessedFile, GeneratedFile } from "@/app/types";
 import ReactMarkdown from "react-markdown";
 import React, { useState, memo, useRef, useEffect } from "react";
 import Image from "next/image";
@@ -14,6 +14,7 @@ import DatasetPreview from "../ui/DatasetPreview";
 import remarkMath from "remark-math";
 import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
+import GeneratedFilesList from "../code/GeneratedFilesList";
 
 // Extend Components type to include our custom math handlers
 interface ExtendedComponents extends Components {
@@ -574,10 +575,10 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
     }, [message.content]);
 
     // Process the message content to extract LaTeX blocks
-    const processLatexContent = (content: string | undefined) => {
+    const processLatexContent = (content: string | undefined): string => {
         // Return early if content is undefined or null
         if (!content) {
-            return { hasLatex: false, processedContent: "" };
+            return "";
         }
 
         // Check if content contains various LaTeX delimiters
@@ -588,7 +589,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
             content.includes("$");
 
         if (!hasStandardLatex) {
-            return { hasLatex: false, processedContent: content };
+            return content;
         }
 
         // Enhanced regex patterns for LaTeX detection
@@ -624,10 +625,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
             }
         );
 
-        return {
-            hasLatex: true,
-            processedContent,
-        };
+        return processedContent;
     };
 
     // Define types for the parts array
@@ -638,15 +636,10 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
     // Component to render the processed content
     const ProcessedContent = () => {
         // Process the content for LaTeX expressions
-        const processedLatex = processLatexContent(message.content);
+        const processedContent = processLatexContent(message.content);
 
         // If the message contains datasets, handle them separately
         if (datasets.length > 0) {
-            // Use the improved processedContent that handles both LaTeX and regular text
-            const processedContent = processedLatex.hasLatex
-                ? processedLatex.processedContent
-                : message.content;
-
             // The rest of dataset handling logic remains the same
             const parts: ContentPart[] = [];
             let lastIndex = 0;
@@ -717,60 +710,49 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
             );
         }
 
-        // If content has LaTeX, use the processed content
-        if (processedLatex.hasLatex) {
-            return (
-                <ReactMarkdown
-                    components={markdownComponents}
-                    remarkPlugins={[remarkMath, remarkGfm]}
-                    rehypePlugins={[rehypeKatex]}
-                >
-                    {processedLatex.processedContent}
-                </ReactMarkdown>
-            );
-        }
-
-        // Otherwise, render content normally
+        // Render content normally
         return (
             <ReactMarkdown
                 components={markdownComponents}
                 remarkPlugins={[remarkMath, remarkGfm]}
                 rehypePlugins={[rehypeKatex]}
             >
-                {message.content}
+                {processedContent}
             </ReactMarkdown>
         );
     };
 
+    // Render generated files from code execution
+    const renderGeneratedFiles = () => {
+        if (!message.generatedFiles || message.generatedFiles.length === 0) return null;
+        
+        return <GeneratedFilesList files={message.generatedFiles} />;
+    };
+
     return (
         <div
-            className={`flex gap-3 ${
-                isUser ? "justify-end" : "justify-start"
-            } mb-6`}
+            className={`flex ${
+                isUser ? "justify-end text-right" : "justify-start"
+            }`}
         >
-            {/* {!isUser && (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 mt-1">
-                    <span className="text-white text-xs font-medium">AI</span>
-                </div>
-            )} */}
             <div
-                className={`max-w-[85%] px-4 py-3 rounded-2xl relative group ${
+                className={`max-w-[85%] sm:max-w-[80%] lg:max-w-[75%] rounded-lg px-4 py-2 relative ${
                     isUser
-                        ? "bg-blue-500 text-white rounded-tr-none shadow-sm"
-                        : "bg-gray-50 dark:bg-gray-800/80 text-gray-800 dark:text-gray-100 rounded-tl-none shadow-sm border border-gray-200 dark:border-gray-700"
+                        ? "bg-blue-600 text-white rounded-br-none"
+                        : "bg-gray-800 text-white rounded-bl-none"
                 }`}
             >
                 {!isUser && (
-                    <button
-                        onClick={copyToClipboard}
-                        className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:scale-110 transform"
-                        title="Copy to clipboard"
-                    >
-                        <div className="bg-gray-200 dark:bg-gray-700 rounded-full p-1.5 shadow-lg">
+                    <div className="absolute -top-2 -right-2">
+                        <button
+                            onClick={copyToClipboard}
+                            className="text-gray-400 hover:text-white p-1 rounded-full transition-colors bg-gray-700 hover:bg-gray-600"
+                            title="Copy to clipboard"
+                        >
                             {isCopied ? (
                                 <svg
                                     xmlns="http://www.w3.org/2000/svg"
-                                    className="h-4 w-4 text-green-500"
+                                    className="h-4 w-4"
                                     viewBox="0 0 20 20"
                                     fill="currentColor"
                                 >
@@ -783,74 +765,91 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                             ) : (
                                 <svg
                                     xmlns="http://www.w3.org/2000/svg"
-                                    className="h-4 w-4 text-gray-500 dark:text-gray-300"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
+                                    className="h-4 w-4"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
                                 >
-                                    <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
-                                    <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                                    />
                                 </svg>
                             )}
-                        </div>
-                    </button>
+                        </button>
+                    </div>
                 )}
-                {isUser && renderUploadedFiles()}
-                <div
-                    className={`text-base markdown-content ${
-                        !isUser
-                            ? "prose prose-base dark:prose-invert max-w-none"
-                            : ""
-                    }`}
-                >
-                    {message.content !== undefined ? (
-                        <ProcessedContent />
-                    ) : (
-                        <div className="text-gray-400 italic">No content to display</div>
-                    )}
+
+                {renderUploadedFiles()}
+
+                <div ref={codeBlockRef} className="markdown-content">
+                    <ReactMarkdown
+                        components={markdownComponents}
+                        remarkPlugins={[remarkGfm, remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                    >
+                        {processLatexContent(message.content)}
+                    </ReactMarkdown>
                 </div>
 
-                {/* Display grounding sources if available */}
-                {!isUser && message.groundingSources && message.groundingSources.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
-                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9z" clipRule="evenodd" />
-                            </svg>
+                {/* Show grounding sources if available */}
+                {message.groundingSources && message.groundingSources.length > 0 && (
+                    <div className="mt-3 border-t border-gray-700 pt-3">
+                        <div className="text-sm font-medium mb-2 text-blue-300">
                             Sources:
                         </div>
                         <div className="space-y-2">
                             {message.groundingSources.map((source, index) => (
-                                <div key={index} className="bg-gray-100 dark:bg-gray-700/60 rounded p-2">
-                                    <a 
-                                        href={source.link} 
-                                        target="_blank" 
+                                <div
+                                    key={index}
+                                    className="text-xs bg-gray-900 rounded p-2"
+                                >
+                                    <a
+                                        href={source.link}
+                                        target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline mb-1 block"
+                                        className="font-medium text-blue-400 hover:underline block mb-1"
                                     >
                                         {source.title}
                                     </a>
-                                    <p className="text-xs text-gray-600 dark:text-gray-300">{source.snippet}</p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">{source.link}</p>
+                                    <div className="text-gray-300">
+                                        {source.snippet}
+                                    </div>
                                 </div>
                             ))}
                         </div>
                     </div>
                 )}
 
-                {/* Add the context menu for code blocks */}
+                {/* Show generated files if available */}
+                {renderGeneratedFiles()}
+
+                {/* Show dataset previews */}
+                {datasets.length > 0 && (
+                    <div className="mt-3">
+                        {datasets.map((dataset, index) => (
+                            <DatasetPreview
+                                key={index}
+                                content={dataset.content}
+                                format={dataset.format}
+                                filename={dataset.filename}
+                                mimeType={dataset.mimeType}
+                            />
+                        ))}
+                    </div>
+                )}
+
+                {/* Show code block menu if active */}
                 {activeCodeBlock && (
                     <CodeBlockMenu
-                        codeBlockRef={codeBlockRef}
                         content={activeCodeBlock.content}
                         language={activeCodeBlock.language}
+                        codeBlockRef={codeBlockRef}
                     />
                 )}
             </div>
-            {/* {isUser && (
-                <div className="w-8 h-8 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center flex-shrink-0 mt-1">
-                    <span className="text-gray-700 dark:text-gray-200 text-xs font-medium">You</span>
-                </div>
-            )} */}
         </div>
     );
 });

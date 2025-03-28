@@ -5,6 +5,8 @@ import {
     ProcessedFile,
     Conversation,
 } from "@/app/types";
+import { shouldUseCodeExecution, executeCodeWithGemini } from "@/app/lib/geminiCodeExecution";
+import { nanoid } from "nanoid";
 
 // Define a custom event for real-time conversation updates
 export const CONVERSATION_UPDATED_EVENT = "conversation-updated";
@@ -320,117 +322,233 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
         }
     };
 
+    // Send a message to the conversation
     const sendMessage = useCallback(
-        async (content: string, files?: UploadedFile[], useGroundingSearch?: boolean) => {
-            if (!content.trim() && (!files || files.length === 0)) return;
+        async (
+            content: string,
+            files?: UploadedFile[],
+            useGroundingSearch?: boolean,
+            customMessage?: Message
+        ) => {
             if (!currentConversation) {
-                setError("No active conversation. Please refresh the page.");
+                setError("No active conversation");
                 return;
             }
 
-            // Transform uploadedFiles to match our type, with validation
-            const processedFiles: ProcessedFile[] =
-                files
-                    ?.filter((file) => file && file.file) // Filter out invalid files
-                    .map((file) => ({
-                        id: file.id || Date.now().toString(),
-                        name: file.file.name || "Unknown file",
-                        type: file.file.type || "application/octet-stream",
-                        size: file.file.size || 0,
-                        previewUrl: file.previewUrl,
-                    })) || [];
+            // Don't allow empty messages without files
+            if (!content.trim() && (!files || files.length === 0) && !customMessage) {
+                return;
+            }
 
-            // Create new user message
-            const userMessage: Message = {
-                id: Date.now().toString(),
-                content,
-                role: "user",
-                timestamp: new Date(),
-                files: processedFiles.length > 0 ? processedFiles : undefined,
-            };
-
-            setMessages((prev) => [...prev, userMessage]);
             setIsLoading(true);
-            setError(null);
 
             try {
-                // Update conversation title based on the message
-                await updateConversationTitle(content);
-
-                // Save user message to conversation
-                await saveMessageToConversation(userMessage);
-
-                // Prepare messages for API
-                const apiMessages = messages
-                    .concat(userMessage)
-                    .map(({ content, role }) => ({
-                        content,
-                        role,
-                    }));
-
-                // Convert files to base64 for sending to API, with validation
-                const fileData = await Promise.all(
-                    files
-                        ?.filter((file) => file && file.file) // Filter out invalid files
-                        .map(async (file) => {
-                            try {
-                                return {
-                                    id: file.id || Date.now().toString(),
-                                    name: file.file.name || "Unknown file",
-                                    type:
-                                        file.file.type ||
-                                        "application/octet-stream",
-                                    size: file.file.size || 0,
-                                    content: await fileToBase64(file.file),
-                                };
-                            } catch (error) {
-                                console.error("Error processing file:", error);
-                                return null;
-                            }
-                        }) || []
-                ).then((results) => results.filter(Boolean)); // Filter out nulls from failed conversions
-
-                const response = await fetch("/api/chat", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        messages: apiMessages,
-                        files: fileData.length > 0 ? fileData : undefined,
-                        useGroundingSearch: useGroundingSearch || false,
-                    }),
-                });
-
-                if (!response.ok) {
-                    throw new Error("Failed to get response");
+                // If it's a custom message (like from code execution), use it directly
+                if (customMessage) {
+                    const newMessage = {
+                        ...customMessage,
+                        id: customMessage.id || nanoid(),
+                        timestamp: customMessage.timestamp || new Date(),
+                    };
+                    
+                    setMessages(prevMessages => [...prevMessages, newMessage]);
+                    await saveMessageToConversation(newMessage);
+                    
+                    // If the conversation is new, generate a title
+                    if (
+                        currentConversation?.title === "New Conversation" &&
+                        messages.length === 1
+                    ) {
+                        await generateConversationTitle(currentConversation.id);
+                    }
+                    
+                    setIsLoading(false);
+                    return;
                 }
 
-                const aiMessage = await response.json();
+                // Get the useCodeExecution flag from the Chat component state
+                // This is stored internally in ChatInput and passed through ChatWindow
+                // We'll detect it automatically if not provided explicitly
+                const shouldAttemptCodeExecution = shouldUseCodeExecution(content) && (!files || files.length === 0);
 
-                // Create AI message object
-                const assistantMessage: Message = {
+                // Check if the message might need code execution
+                if (shouldAttemptCodeExecution) {
+                    // First add the user message
+                    const userMessageId = nanoid();
+                    const userMessage: Message = {
+                        id: userMessageId,
+                        content,
+                        role: "user",
+                        timestamp: new Date(),
+                    };
+
+                    setMessages(prevMessages => [...prevMessages, userMessage]);
+                    await saveMessageToConversation(userMessage);
+
+                    // Find code context from previous messages if available
+                    let codeSnippet: string | undefined;
+                    
+                    // Check if the last message from the user contained code to analyze
+                    const recentMessages = [...messages].reverse();
+                    const lastUserMessage = recentMessages.find(m => 
+                        m.role === 'user' && m.content.includes('```')
+                    );
+                    
+                    if (lastUserMessage && lastUserMessage.content.includes('```')) {
+                        // Extract code between triple backticks
+                        const codeMatch = lastUserMessage.content.match(/```(?:\w+)?\s*([\s\S]*?)```/);
+                        if (codeMatch && codeMatch[1]) {
+                            codeSnippet = codeMatch[1].trim();
+                        }
+                    }
+
+                    try {
+                        // Execute code using Gemini
+                        const result = await executeCodeWithGemini(content, codeSnippet);
+                        
+                        // Create response message with results
+                        const responseMessageId = nanoid();
+                        const responseMessage: Message = {
+                            id: responseMessageId,
+                            content: result.outputText,
+                            role: "assistant",
+                            timestamp: new Date(),
+                            generatedFiles: result.generatedFiles
+                        };
+
+                        setMessages(prevMessages => [...prevMessages, responseMessage]);
+                        await saveMessageToConversation(responseMessage);
+
+                        // If the conversation is new, generate a title
+                        if (
+                            currentConversation?.title === "New Conversation" &&
+                            messages.length === 1
+                        ) {
+                            await generateConversationTitle(currentConversation.id);
+                        }
+
+                        setIsLoading(false);
+                        return;
+                    } catch (execError) {
+                        console.error("Code execution failed, falling back to regular response:", execError);
+                        // Fall through to regular message handling
+                    }
+                }
+
+                // Process files if there are any
+                let processedFiles: ProcessedFile[] = [];
+                
+                // Transform uploadedFiles to match our type, with validation
+                processedFiles =
+                    files
+                        ?.filter((file) => file && file.file) // Filter out invalid files
+                        .map((file) => ({
+                            id: file.id || Date.now().toString(),
+                            name: file.file.name || "Unknown file",
+                            type: file.file.type || "application/octet-stream",
+                            size: file.file.size || 0,
+                            previewUrl: file.previewUrl,
+                        })) || [];
+
+                // Create new user message
+                const userMessage: Message = {
                     id: Date.now().toString(),
-                    content: aiMessage.content,
-                    role: "assistant",
+                    content,
+                    role: "user",
                     timestamp: new Date(),
-                    groundingSources: aiMessage.groundingSources,
+                    files: processedFiles.length > 0 ? processedFiles : undefined,
                 };
 
-                // Add AI response to messages
-                setMessages((prev) => [...prev, assistantMessage]);
+                setMessages((prev) => [...prev, userMessage]);
+                setIsLoading(true);
+                setError(null);
 
-                // Save AI message to conversation
-                await saveMessageToConversation(assistantMessage);
+                try {
+                    // Update conversation title based on the message
+                    await updateConversationTitle(content);
 
-                // Dispatch an event to notify that a conversation has been updated
-                dispatchConversationUpdate(currentConversation.id);
+                    // Save user message to conversation
+                    await saveMessageToConversation(userMessage);
+
+                    // Prepare messages for API
+                    const apiMessages = messages
+                        .concat(userMessage)
+                        .map(({ content, role }) => ({
+                            content,
+                            role,
+                        }));
+
+                    // Convert files to base64 for sending to API, with validation
+                    const fileData = await Promise.all(
+                        files
+                            ?.filter((file) => file && file.file) // Filter out invalid files
+                            .map(async (file) => {
+                                try {
+                                    return {
+                                        id: file.id || Date.now().toString(),
+                                        name: file.file.name || "Unknown file",
+                                        type:
+                                            file.file.type ||
+                                            "application/octet-stream",
+                                        size: file.file.size || 0,
+                                        content: await fileToBase64(file.file),
+                                    };
+                                } catch (error) {
+                                    console.error("Error processing file:", error);
+                                    return null;
+                                }
+                            }) || []
+                    ).then((results) => results.filter(Boolean)); // Filter out nulls from failed conversions
+
+                    const response = await fetch("/api/chat", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            messages: apiMessages,
+                            files: fileData.length > 0 ? fileData : undefined,
+                            useGroundingSearch: useGroundingSearch || false,
+                        }),
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("Failed to get response");
+                    }
+
+                    const aiMessage = await response.json();
+
+                    // Create AI message object
+                    const assistantMessage: Message = {
+                        id: Date.now().toString(),
+                        content: aiMessage.content,
+                        role: "assistant",
+                        timestamp: new Date(),
+                        groundingSources: aiMessage.groundingSources,
+                    };
+
+                    // Add AI response to messages
+                    setMessages((prev) => [...prev, assistantMessage]);
+
+                    // Save AI message to conversation
+                    await saveMessageToConversation(assistantMessage);
+
+                    // Dispatch an event to notify that a conversation has been updated
+                    dispatchConversationUpdate(currentConversation.id);
+                } catch (err) {
+                    setError(
+                        err instanceof Error
+                            ? err.message
+                            : "An unknown error occurred"
+                    );
+                } finally {
+                    setIsLoading(false);
+                }
             } catch (err) {
+                console.error("Error sending message:", err);
                 setError(
                     err instanceof Error
                         ? err.message
                         : "An unknown error occurred"
                 );
-            } finally {
-                setIsLoading(false);
             }
         },
         [messages, currentConversation]

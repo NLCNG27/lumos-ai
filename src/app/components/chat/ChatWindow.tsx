@@ -4,6 +4,7 @@ import ChatInput from "./ChatInput";
 import { useChat, dispatchConversationUpdate } from "@/app/hooks/useChat";
 import Link from "next/link";
 import LoadingDots from "../ui/LoadingDots";
+import { shouldUseCodeExecution } from "@/app/lib/geminiCodeExecution";
 
 interface ChatWindowProps {
   initialConversationId?: string;
@@ -119,6 +120,18 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
         }
     };
 
+    // Handle sending messages that might need code execution
+    const handleSendMessage = async (
+        messageText: string, 
+        files?: any[], 
+        useGroundingSearch?: boolean,
+        useCodeExecution?: boolean
+    ) => {
+        // The fourth parameter should be a message, not a boolean
+        // We'll just pass the first three parameters
+        await sendMessage(messageText, files, useGroundingSearch);
+    };
+
     // Scroll to bottom when messages change or when loading state changes
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -232,7 +245,7 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
             </div>
 
             <div className="bg-gray-950 border-t border-gray-800 p-2 rounded-b-lg">
-                <ChatInput onSendMessage={sendMessage} isLoading={isLoading || recoveryInProgress} />
+                <ChatInput onSendMessage={handleSendMessage} isLoading={isLoading} />
             </div>
         </div>
     );

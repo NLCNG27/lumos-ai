@@ -5,12 +5,32 @@ export type Message = {
     timestamp: Date;
     files?: ProcessedFile[];
     groundingSources?: GroundingSource[];
+    generatedFiles?: GeneratedFile[];
+    codeExecutionResult?: string;
+};
+
+export type GeneratedFile = {
+    filename: string;
+    content: string;
 };
 
 export type GroundingSource = {
     title: string;
     link: string;
     snippet: string;
+};
+
+// For code execution operations
+export type CodeExecutionRequest = {
+    prompt: string;
+    codeSnippet?: string;
+    conversationId?: string;
+};
+
+export type CodeExecutionResponse = {
+    result: string;
+    generatedFiles?: GeneratedFile[];
+    error?: string;
 };
 
 export type ChatState = {
