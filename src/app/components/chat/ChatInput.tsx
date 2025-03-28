@@ -4,7 +4,7 @@ import FilePreview from "./FilePreview";
 import { UploadedFile } from "@/app/types";
 import { nanoid } from "nanoid";
 import { dispatchConversationUpdate } from "@/app/hooks/useChat";
-import CodeExecutionToggle from "../code/CodeExecutionToggle";
+import CodeExecutionToggle from "./CodeExecutionToggle";
 
 type ChatInputProps = {
     onSendMessage: (message: string, files?: UploadedFile[], useGroundingSearch?: boolean) => void;
@@ -256,12 +256,7 @@ export default function ChatInput({
 
                 <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 px-1">
                     <div>
-                        {useCodeExecution && (
-                            <span className="flex items-center gap-1">
-                                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                                Code execution enabled
-                            </span>
-                        )}
+                        {/* Code execution indicator removed */}
                     </div>
                     <div>
                         {uploadedFiles.length > 0 && (

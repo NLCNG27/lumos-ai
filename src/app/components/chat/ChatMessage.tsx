@@ -14,7 +14,7 @@ import DatasetPreview from "../ui/DatasetPreview";
 import remarkMath from "remark-math";
 import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
-import GeneratedFilesList from "../code/GeneratedFilesList";
+import GeneratedFilesList from "./GeneratedFilesList";
 
 // Extend Components type to include our custom math handlers
 interface ExtendedComponents extends Components {
