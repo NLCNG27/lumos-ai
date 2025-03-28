@@ -18,7 +18,7 @@ export default function ChatInput({
     const [input, setInput] = useState("");
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
     const [useGroundingSearch, setUseGroundingSearch] = useState(false);
-    const [useCodeExecution, setUseCodeExecution] = useState(true);
+    const [useCodeExecution, setUseCodeExecution] = useState(false);
     const formRef = useRef<HTMLFormElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
