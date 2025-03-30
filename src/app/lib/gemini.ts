@@ -1,7 +1,22 @@
 import { GoogleGenerativeAI, GenerativeModel, HarmCategory, HarmBlockThreshold, Content, Part, InlineDataPart } from "@google/generative-ai";
 
 // Initialize the Gemini API client
-export const geminiAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
+
+// Only initialize if we have a key to avoid errors during initial page load
+let geminiAI: GoogleGenerativeAI;
+try {
+  geminiAI = new GoogleGenerativeAI(apiKey);
+  if (!apiKey) {
+    console.error("GEMINI_API_KEY is not set in the environment variables");
+  }
+} catch (error) {
+  console.error("Failed to initialize Gemini AI:", error);
+  // Create a dummy instance that will be replaced once API key is available
+  geminiAI = new GoogleGenerativeAI('placeholder');
+}
+
+export { geminiAI };
 
 // Available Gemini models
 export const GEMINI_MODELS = {
@@ -71,6 +86,40 @@ export function getGeminiModel(modelName = GEMINI_MODELS.GEMINI_FLASH, enableGoo
   
   const model = geminiAI.getGenerativeModel(modelConfig);
   return model;
+}
+
+/**
+ * Creates a Gemini model with code execution capability
+ * This allows the model to generate and run code in a secure sandbox
+ */
+export function getGeminiModelWithCodeExecution(modelName = GEMINI_MODELS.GEMINI_FLASH) {
+  // Ensure we're using a valid model
+  const finalModel = Object.values(GEMINI_MODELS).includes(modelName as string) 
+    ? modelName 
+    : GEMINI_MODELS.GEMINI_FLASH;
+  
+  console.log(`Creating Gemini model with code execution capability: ${finalModel}`);
+  
+  // For gemini-2.0-flash, we need to ensure we're using the right API version
+  // and properly configuring the code execution tool
+  try {
+    // Create model configuration with code execution tool
+    const modelConfig = {
+      model: finalModel,
+      safetySettings,
+      tools: [
+        {
+          codeExecution: {},
+        },
+      ],
+      apiVersion: "v1beta", // Explicitly set the API version
+    };
+    
+    return geminiAI.getGenerativeModel(modelConfig);
+  } catch (error) {
+    console.error(`Failed to create Gemini model with code execution: ${error}`);
+    throw error;
+  }
 }
 
 // Convert message format to Gemini content format
@@ -301,5 +350,41 @@ export async function generateMultimodalResponse(
   } catch (error) {
     console.error('Error generating multimodal Gemini response:', error);
     throw error;
+  }
+}
+
+/**
+ * Verifies that the Gemini API key is valid and has access to the specified model
+ * @param modelName The model to verify access for
+ * @returns A promise that resolves to a boolean indicating if the API key is valid
+ */
+export async function verifyGeminiApiKey(modelName = GEMINI_MODELS.GEMINI_FLASH): Promise<{valid: boolean, error?: string}> {
+  try {
+    // Get a model instance
+    const model = getGeminiModel(modelName);
+    
+    // Send a simple test prompt
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: "Hello, this is a test message to verify API key access." }] }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 10,
+      },
+    });
+    
+    // If we get here, the API key is valid
+    return { valid: true };
+  } catch (error) {
+    console.error(`Failed to verify Gemini API key for model ${modelName}:`, error);
+    let errorMessage = "Unknown error verifying API key";
+    
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+    
+    return { 
+      valid: false, 
+      error: errorMessage
+    };
   }
 } 

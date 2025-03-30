@@ -328,7 +328,8 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
             content: string,
             files?: UploadedFile[],
             useGroundingSearch?: boolean,
-            customMessage?: Message
+            customMessage?: Message,
+            forceCodeExecution?: boolean
         ) => {
             if (!currentConversation) {
                 setError("No active conversation");
@@ -366,10 +367,11 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
                     return;
                 }
 
-                // Get the useCodeExecution flag from the Chat component state
-                // This is stored internally in ChatInput and passed through ChatWindow
-                // We'll detect it automatically if not provided explicitly
-                const shouldAttemptCodeExecution = shouldUseCodeExecution(content) && (!files || files.length === 0);
+                // Get the useCodeExecution flag from the Chat component state or check if it's forced
+                // We'll also detect it automatically from the content if not explicitly set
+                const shouldAttemptCodeExecution = 
+                    forceCodeExecution === true || 
+                    (shouldUseCodeExecution(content) && (!files || files.length === 0));
 
                 // Check if the message might need code execution
                 if (shouldAttemptCodeExecution) {
@@ -579,14 +581,40 @@ export function useChat({ initialConversationId }: UseChatProps = {}) {
         });
     };
 
+    /**
+     * Executes code using Gemini and returns the result
+     * This is a direct method to use code execution without sending a chat message
+     */
+    const executeCode = async (codePrompt: string, codeSnippet?: string) => {
+        try {
+            setIsLoading(true);
+            const result = await executeCodeWithGemini(codePrompt, codeSnippet);
+            return result;
+        } catch (error) {
+            console.error("Error executing code:", error);
+            setError(error instanceof Error ? error.message : "An unknown error occurred");
+            return {
+                outputText: "An error occurred while executing the code.",
+                error: error instanceof Error ? error.message : "Unknown error",
+            };
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     return {
         messages,
         isLoading,
         error,
-        sendMessage,
         currentConversation,
-        loadConversation,
+        sendMessage,
+        setMessages,
+        saveNewConversation: createNewConversation,
         createNewConversation,
         generateConversationTitle,
+        executeCode,
     };
 }
+
+// Define the return type of useChat hook for better type checking
+export type UseChatReturnType = ReturnType<typeof useChat>;

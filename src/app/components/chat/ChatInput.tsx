@@ -5,9 +5,10 @@ import { UploadedFile } from "@/app/types";
 import { nanoid } from "nanoid";
 import { dispatchConversationUpdate } from "@/app/hooks/useChat";
 import CodeExecutionToggle from "./CodeExecutionToggle";
+import React from "react";
 
 type ChatInputProps = {
-    onSendMessage: (message: string, files?: UploadedFile[], useGroundingSearch?: boolean) => void;
+    onSendMessage: (message: string, files?: UploadedFile[], useGroundingSearch?: boolean, useCodeExecution?: boolean) => void;
     isLoading: boolean;
 };
 
@@ -19,7 +20,7 @@ export default function ChatInput({
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
     const [useGroundingSearch, setUseGroundingSearch] = useState(false);
     const [useCodeExecution, setUseCodeExecution] = useState(false);
-    const formRef = useRef<HTMLFormElement>(null);
+    const formRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
     // Notify when user starts typing
@@ -34,7 +35,7 @@ export default function ChatInput({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if ((input.trim() || uploadedFiles.length > 0) && !isLoading) {
-            onSendMessage(input, uploadedFiles, useGroundingSearch);
+            onSendMessage(input, uploadedFiles, useGroundingSearch, useCodeExecution);
             setInput("");
             setUploadedFiles([]);
         }
@@ -45,7 +46,7 @@ export default function ChatInput({
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             if ((input.trim() || uploadedFiles.length > 0) && !isLoading) {
-                onSendMessage(input, uploadedFiles, useGroundingSearch);
+                onSendMessage(input, uploadedFiles, useGroundingSearch, useCodeExecution);
                 setInput("");
                 setUploadedFiles([]);
             }
@@ -145,9 +146,14 @@ export default function ChatInput({
     }, []);
 
     return (
-        <form
+        <div
             ref={formRef}
-            onSubmit={handleSubmit}
+            role="form"
+            onClick={(e) => {
+                if (e.target === formRef.current) {
+                    handleSubmit(e as unknown as React.FormEvent);
+                }
+            }}
             className="flex flex-col p-4"
         >
             <FilePreview files={uploadedFiles} onRemove={handleRemoveFile} />
@@ -167,104 +173,48 @@ export default function ChatInput({
                     >
                         <svg 
                             xmlns="http://www.w3.org/2000/svg" 
-                            className={`h-5 w-5 ${useGroundingSearch ? "text-blue-600" : "text-gray-400"}`} 
-                            fill="none" 
-                            viewBox="0 0 24 24" 
-                            stroke="currentColor" 
-                            strokeWidth={1.5}
+                            className={`h-5 w-5 ${useGroundingSearch ? "text-blue-600" : "text-gray-400"}`}
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
                         >
                             <path 
                                 strokeLinecap="round" 
                                 strokeLinejoin="round" 
-                                d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" 
+                                strokeWidth={2} 
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" 
                             />
                         </svg>
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                            <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 shadow-md whitespace-nowrap">
-                                Web Search
-                            </div>
-                        </div>
                     </button>
                     
-                    {/* Code Execution Toggle */}
                     <CodeExecutionToggle 
                         enabled={useCodeExecution}
                         onChange={setUseCodeExecution}
                     />
-
+                </div>
+                
+                <div className="flex items-center">
                     <textarea
                         ref={textareaRef}
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder={
-                            uploadedFiles.length > 0
-                                ? "Ask about your files or type a message... (Shift+Enter for new line)"
-                                : "Tell me what you need..."
-                        }
-                        className="flex-grow p-2 rounded-lg border border-gray-300 dark:border-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[40px] max-h-[120px] resize-y"
-                        disabled={isLoading}
+                        placeholder="Type your message..."
                         rows={1}
+                        className="w-full p-2 border border-gray-300 dark:border-gray-700 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"
                     />
-
                     <button
-                        type="submit"
-                        disabled={
-                            isLoading ||
-                            (!input.trim() && uploadedFiles.length === 0)
-                        }
-                        className="bg-blue-500 text-white p-2 rounded-full disabled:opacity-50"
+                        type="button"
+                        onClick={handleSubmit}
+                        disabled={isLoading || (!input.trim() && uploadedFiles.length === 0)}
+                        className="ml-2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        {isLoading ? (
-                            <div className="flex items-center">
-                                <svg
-                                    className="animate-spin h-5 w-5"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <circle
-                                        className="opacity-25"
-                                        cx="12"
-                                        cy="12"
-                                        r="10"
-                                        stroke="currentColor"
-                                        strokeWidth="4"
-                                        fill="none"
-                                    ></circle>
-                                    <path
-                                        className="opacity-75"
-                                        fill="currentColor"
-                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                    ></path>
-                                </svg>
-                            </div>
-                        ) : (
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-5 w-5"
-                                viewBox="0 0 20 20"
-                                fill="currentColor"
-                            >
-                                <path
-                                    fillRule="evenodd"
-                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z"
-                                    clipRule="evenodd"
-                                />
-                            </svg>
-                        )}
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                        </svg>
                     </button>
                 </div>
-
-                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 px-1">
-                    <div>
-                        {/* Code execution indicator removed */}
-                    </div>
-                    <div>
-                        {uploadedFiles.length > 0 && (
-                            <span>{uploadedFiles.length} file{uploadedFiles.length !== 1 ? 's' : ''} attached</span>
-                        )}
-                    </div>
-                </div>
             </div>
-        </form>
+        </div>
     );
 }

@@ -127,9 +127,9 @@ export default function ChatWindow({ initialConversationId }: ChatWindowProps) {
         useGroundingSearch?: boolean,
         useCodeExecution?: boolean
     ) => {
-        // The fourth parameter should be a message, not a boolean
-        // We'll just pass the first three parameters
-        await sendMessage(messageText, files, useGroundingSearch);
+        // Pass the first three parameters as usual, and add a customMessage parameter as null
+        // Then pass useCodeExecution as forceCodeExecution parameter
+        await sendMessage(messageText, files, useGroundingSearch, undefined, useCodeExecution);
     };
 
     // Scroll to bottom when messages change or when loading state changes
