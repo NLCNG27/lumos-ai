@@ -2,6 +2,7 @@
 
 import ChatWindow from "@/app/components/chat/ChatWindow";
 import ConversationSidebar from "@/app/components/chat/ConversationSidebar";
+import MainMenu from "@/app/components/MainMenu";
 import Image from "next/image";
 import { SignedIn, SignedOut, UserButton, SignInButton, SignUpButton } from "@clerk/nextjs";
 import { useState, useEffect, Suspense } from "react";
@@ -67,17 +68,20 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
     return (
         <>
             <SignedIn>
-                {/* Sidebar for conversations */}
-                <div className={`${sidebarOpen ? 'block' : 'hidden'} md:block h-full`}>
-                    <ConversationSidebar 
-                        currentConversationId={conversationId} 
-                        onSelectConversation={handleSelectConversation} 
-                    />
-                </div>
+                {/* Main chat container */}
+                <div className="flex w-full h-full">
+                    {/* Sidebar for conversations */}
+                    <div className={`${sidebarOpen ? 'w-64' : 'w-0'} md:w-72 flex-shrink-0 transition-all duration-300 h-full overflow-hidden`}>
+                        <ConversationSidebar 
+                            currentConversationId={conversationId} 
+                            onSelectConversation={handleSelectConversation} 
+                        />
+                    </div>
 
-                {/* Main chat area */}
-                <div className="flex-1 flex flex-col h-full overflow-hidden">
-                    <ChatWindow initialConversationId={conversationId || undefined} />
+                    {/* Main chat area */}
+                    <div className="flex-1 flex flex-col h-full overflow-hidden">
+                        <ChatWindow initialConversationId={conversationId || undefined} />
+                    </div>
                 </div>
             </SignedIn>
 
@@ -117,14 +121,15 @@ export default function Home() {
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-black">
             <Navbar />
+            <MainMenu />
 
-            <main className="flex flex-1 h-[calc(100vh-128px)]">
+            <main className="flex flex-1 h-[calc(100vh-128px)] ml-16 pl-4">
                 <Suspense fallback={<ChatLoading />}>
                     <ChatContent sidebarOpen={sidebarOpen} />
                 </Suspense>
             </main>
 
-            <footer className="bg-black text-gray-500 text-center text-sm p-4 border-t border-gray-800">
+            <footer className="bg-black text-gray-500 text-center text-sm p-4 border-t border-gray-800 ml-16 pl-4">
                 &copy; {new Date().getFullYear()} Lumos AI. Developed by{" "}
                 <a
                     href="https://www.cngsoftware.com/"

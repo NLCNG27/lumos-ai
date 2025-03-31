@@ -46,9 +46,6 @@ export default function RootLayout({
                 <link rel="preconnect" href="https://clerk.lumos-ai.com" />
                 <link rel="preconnect" href="https://generativelanguage.googleapis.com" />
                 
-                {/* Add preload for critical CSS */}
-                <link rel="preload" href="/globals.css" as="style" />
-                
                 {/* Add DNS prefetch */}
                 <link rel="dns-prefetch" href="https://clerk.lumos-ai.com" />
                 <link rel="dns-prefetch" href="https://generativelanguage.googleapis.com" />
