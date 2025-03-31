@@ -1,34 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Loader2, Info, Code, Send } from "lucide-react";
+import ChatInput from "@/app/components/chat/ChatInput";
+import FormattedCodeResponse from "@/app/components/code/FormattedCodeResponse";
 
 export default function GeminiCodeExecution() {
     const [prompt, setPrompt] = useState<string>("");
     const [response, setResponse] = useState<string>("");
-    const [formattedResponse, setFormattedResponse] = useState<string>("");
     const [inlineData, setInlineData] = useState<any[]>([]);
     const [loading, setLoading] = useState<boolean>(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Format code blocks in the response
-    useEffect(() => {
-        if (response) {
-            // Simple code block formatting - replace markdown code blocks with styled divs
-            const formatted = response.replace(
-                /```(\w*)([\s\S]*?)```/g,
-                '<div class="bg-gray-900 p-3 rounded-md my-3 overflow-x-auto text-gray-300 font-mono text-sm">$2</div>'
-            );
-            setFormattedResponse(formatted);
-        } else {
-            setFormattedResponse("");
-        }
-    }, [response]);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        if (!prompt.trim()) {
+    const handleSendMessage = async (message: string) => {
+        if (!message.trim()) {
             setError("Please enter a prompt");
             return;
         }
@@ -36,16 +21,16 @@ export default function GeminiCodeExecution() {
         setLoading(true);
         setError(null);
         setResponse("");
-        setFormattedResponse("");
         setInlineData([]);
+        setPrompt(message);
 
         try {
-            const res = await fetch("/api/gemini-code-execution", {
+            const res = await fetch("/api/chalkboard", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({ prompt }),
+                body: JSON.stringify({ prompt: message }),
             });
 
             const data = await res.json();
@@ -80,24 +65,20 @@ export default function GeminiCodeExecution() {
         <div className="container mx-auto px-4 py-8 max-w-5xl text-white">
             <div className="flex items-center mb-6">
                 <Code className="h-8 w-8 text-blue-400 mr-3" />
-                <h1 className="text-3xl font-bold">
-                    Gemini Code Execution Test
-                </h1>
+                <h1 className="text-3xl font-bold">Chalkboard (beta)</h1>
             </div>
 
             <div className="bg-gray-800 border border-gray-700 rounded-md p-4 mb-6 flex items-start">
                 <Info className="text-blue-400 h-5 w-5 mt-0.5 mr-3 flex-shrink-0" />
                 <div>
                     <h3 className="font-medium text-blue-300">
-                        About Gemini Code Execution
+                        About Chalkboard
                     </h3>
                     <p className="text-gray-300 text-sm mt-1">
-                        Gemini's code execution capability allows the model to
-                        generate and run code in a secure sandbox environment.
-                        It can generate code in multiple languages, run the
-                        code, and analyze the results. This test page
-                        demonstrates how to interact with Gemini's code
-                        execution feature through a simple interface.
+                        Chalkboard is a tool that allows you to generate and run
+                        code in a secure sandbox environment. It can generate
+                        code in multiple languages, run the code, and analyze
+                        the results.
                     </p>
                 </div>
             </div>
@@ -109,12 +90,14 @@ export default function GeminiCodeExecution() {
                             <span className="bg-blue-600 h-5 w-1 mr-2 rounded"></span>
                             Sample Prompts
                         </h2>
-                        <div className="grid grid-cols-1 gap-2">
+                        <div className="grid grid-cols-1 gap-4">
                             {samplePrompts.map((samplePrompt, index) => (
                                 <button
                                     key={index}
-                                    onClick={() => setPrompt(samplePrompt)}
-                                    className="text-left p-2 border border-gray-700 rounded bg-gray-900 hover:bg-gray-700 transition"
+                                    onClick={() =>
+                                        handleSendMessage(samplePrompt)
+                                    }
+                                    className="text-left p-3 border border-gray-700 rounded bg-gray-900 hover:bg-gray-700 transition"
                                 >
                                     {samplePrompt}
                                 </button>
@@ -124,46 +107,22 @@ export default function GeminiCodeExecution() {
                 </div>
 
                 <div className="md:col-span-3 flex flex-col">
-                    <div className="bg-gray-800 border border-gray-700 rounded-md p-4 mb-6 flex-grow">
-                        <form onSubmit={handleSubmit} className="mb-8">
-                            <div className="mb-4">
-                                <label
-                                    htmlFor="prompt"
-                                    className="block text-sm font-medium mb-2 flex items-center"
-                                >
-                                    <span className="bg-blue-600 h-5 w-1 mr-2 rounded"></span>
-                                    Enter your prompt for code execution:
-                                </label>
-                                <div className="relative">
-                                    <textarea
-                                        id="prompt"
-                                        value={prompt}
-                                        onChange={(e) =>
-                                            setPrompt(e.target.value)
-                                        }
-                                        className="w-full h-32 p-3 border border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-900 text-white pr-12"
-                                        placeholder="Example: Generate and run code to calculate the first 10 Fibonacci numbers"
-                                    />
-                                    <button
-                                        type="submit"
-                                        disabled={loading || !prompt.trim()}
-                                        className="absolute right-3 bottom-3 p-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        {loading ? (
-                                            <Loader2 className="animate-spin h-5 w-5" />
-                                        ) : (
-                                            <Send className="h-5 w-5" />
-                                        )}
-                                    </button>
-                                </div>
-                            </div>
+                    <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 mb-6 flex-grow">
+                        <div className="mb-2 text-sm text-gray-300">
+                            Enter your prompt for code execution:
+                        </div>
 
-                            {error && (
-                                <div className="mt-4 p-3 bg-red-900 border border-red-700 text-red-200 rounded-md">
-                                    {error}
-                                </div>
-                            )}
-                        </form>
+                        <ChatInput
+                            onSendMessage={handleSendMessage}
+                            isLoading={loading}
+                            showWebSearch={false}
+                        />
+
+                        {error && (
+                            <div className="mt-4 p-3 bg-red-900 border border-red-700 text-red-200 rounded-md">
+                                {error}
+                            </div>
+                        )}
 
                         {loading && (
                             <div className="flex justify-center items-center p-8">
@@ -177,12 +136,9 @@ export default function GeminiCodeExecution() {
                                     <span className="bg-blue-600 h-5 w-1 mr-2 rounded"></span>
                                     Response
                                 </h2>
-                                <div
-                                    className="p-4 bg-gray-900 border border-gray-700 rounded-md"
-                                    dangerouslySetInnerHTML={{
-                                        __html: formattedResponse,
-                                    }}
-                                />
+                                <div className="p-5 bg-gray-850 border border-gray-700 rounded-md shadow-md">
+                                    <FormattedCodeResponse response={response} />
+                                </div>
 
                                 {inlineData.length > 0 && (
                                     <div className="mt-6">

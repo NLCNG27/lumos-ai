@@ -10,11 +10,13 @@ import React from "react";
 type ChatInputProps = {
     onSendMessage: (message: string, files?: UploadedFile[], useGroundingSearch?: boolean, useCodeExecution?: boolean) => void;
     isLoading: boolean;
+    showWebSearch?: boolean;
 };
 
 export default function ChatInput({
     onSendMessage,
     isLoading,
+    showWebSearch = true,
 }: ChatInputProps) {
     const [input, setInput] = useState("");
     const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -159,41 +161,38 @@ export default function ChatInput({
             <FilePreview files={uploadedFiles} onRemove={handleRemoveFile} />
 
             <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                    <FileUpload
-                        onFileSelect={handleFileSelect}
-                        isLoading={isLoading}
-                    />
-                    
-                    <button
-                        type="button"
-                        onClick={() => setUseGroundingSearch(!useGroundingSearch)}
-                        className="flex items-center justify-center h-8 w-8 text-sm rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors relative group"
-                        aria-label={useGroundingSearch ? "Disable Google Search grounding" : "Enable Google Search grounding"}
-                    >
-                        <svg 
-                            xmlns="http://www.w3.org/2000/svg" 
-                            className={`h-5 w-5 ${useGroundingSearch ? "text-blue-600" : "text-gray-400"}`}
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path 
-                                strokeLinecap="round" 
-                                strokeLinejoin="round" 
-                                strokeWidth={2} 
-                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" 
-                            />
-                        </svg>
-                    </button>
-                    
-                    <CodeExecutionToggle 
-                        enabled={useCodeExecution}
-                        onChange={setUseCodeExecution}
-                    />
-                </div>
-                
                 <div className="flex items-center">
+                    <div className="flex items-center">
+                        <FileUpload
+                            onFileSelect={handleFileSelect}
+                            isLoading={isLoading}
+                        />
+                        
+                        {showWebSearch && (
+                            <button
+                                type="button"
+                                onClick={() => setUseGroundingSearch(!useGroundingSearch)}
+                                className="flex items-center justify-center h-8 w-8 text-sm rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors relative group"
+                                aria-label={useGroundingSearch ? "Disable Google Search grounding" : "Enable Google Search grounding"}
+                            >
+                                <svg 
+                                    xmlns="http://www.w3.org/2000/svg" 
+                                    className={`h-5 w-5 ${useGroundingSearch ? "text-blue-600" : "text-gray-400"}`}
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                >
+                                    <path 
+                                        strokeLinecap="round" 
+                                        strokeLinejoin="round" 
+                                        strokeWidth={2} 
+                                        d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" 
+                                    />
+                                </svg>
+                            </button>
+                        )}
+                    </div>
+                    
                     <textarea
                         ref={textareaRef}
                         value={input}
@@ -201,7 +200,7 @@ export default function ChatInput({
                         onKeyDown={handleKeyDown}
                         placeholder="Type your message..."
                         rows={1}
-                        className="w-full p-2 border border-gray-300 dark:border-gray-700 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"
+                        className="w-full p-2 ml-2 border border-gray-300 dark:border-gray-700 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-white"
                     />
                     <button
                         type="button"

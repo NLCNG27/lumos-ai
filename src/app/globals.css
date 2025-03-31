@@ -191,3 +191,253 @@ body {
   border-bottom: 1px dotted #ef4444;
   cursor: help;
 }
+
+/* Chalkboard code response styling */
+.code-response pre {
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+}
+
+.code-response .prose {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.code-response code {
+  background-color: #2d3748;
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9em;
+}
+
+/* When code is inside a pre tag, remove the padding and background */
+.code-response pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+/* Custom scrollbar for code blocks */
+.code-response pre::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.code-response pre::-webkit-scrollbar-thumb {
+  background-color: rgba(107, 114, 128, 0.3);
+  border-radius: 4px;
+}
+
+.code-response pre::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(107, 114, 128, 0.5);
+}
+
+/* Highlighting improvements */
+.code-response .token.comment,
+.code-response .token.prolog,
+.code-response .token.doctype,
+.code-response .token.cdata {
+  color: #6a9955;
+}
+
+.code-response .token.punctuation {
+  color: #d4d4d4;
+}
+
+.code-response .token.property,
+.code-response .token.tag,
+.code-response .token.boolean,
+.code-response .token.number,
+.code-response .token.constant,
+.code-response .token.symbol,
+.code-response .token.deleted {
+  color: #b5cea8;
+}
+
+.code-response .token.selector,
+.code-response .token.attr-name,
+.code-response .token.string,
+.code-response .token.char,
+.code-response .token.builtin,
+.code-response .token.inserted {
+  color: #ce9178;
+}
+
+/* Enhanced markdown formatting for chalkboard */
+.code-response .prose h1,
+.code-response .prose h2,
+.code-response .prose h3,
+.code-response .prose h4 {
+  margin-top: 1.5em;
+  margin-bottom: 0.75em;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #e2e8f0;
+}
+
+.code-response .prose h1 {
+  font-size: 1.5rem;
+}
+
+.code-response .prose h2 {
+  font-size: 1.3rem;
+}
+
+.code-response .prose h3 {
+  margin-top: 1.5em;
+  border-bottom: 1px solid rgba(75, 85, 99, 0.5);
+  padding-bottom: 0.5em;
+  color: #f1f5f9;
+  display: inline-block;
+  position: relative;
+}
+
+.code-response .prose h3::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 30%;
+  height: 2px;
+  background: #3b82f6;
+  border-radius: 1px;
+}
+
+.code-response .prose h3:first-child {
+  margin-top: 0.5em;
+}
+
+.code-response .prose h4 {
+  font-size: 1.1rem;
+}
+
+.code-response .prose strong {
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.code-response .prose em {
+  font-style: italic;
+  color: #e2e8f0;
+}
+
+.code-response .prose ul,
+.code-response .prose ol {
+  margin-top: 0.5em;
+  margin-bottom: 1em;
+  padding-left: 1.5em;
+}
+
+.code-response .prose ul {
+  list-style-type: disc;
+}
+
+.code-response .prose ol {
+  list-style-type: decimal;
+}
+
+.code-response .prose li {
+  margin-bottom: 0.25em;
+}
+
+.code-response .prose a {
+  color: #60a5fa;
+  text-decoration: none;
+}
+
+.code-response .prose a:hover {
+  text-decoration: underline;
+}
+
+.code-response .prose blockquote {
+  border-left: 4px solid #4b5563;
+  padding-left: 1em;
+  margin-left: 0;
+  font-style: italic;
+  color: #94a3b8;
+}
+
+.code-response .prose p {
+  margin-bottom: 0.75em;
+  line-height: 1.65;
+}
+
+.code-response .prose code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9em;
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  background-color: #374151;
+  color: #e2e8f0;
+}
+
+/* Number markers and bullet points in lists */
+.code-response .prose ul li::marker {
+  color: #6b7280;
+}
+
+.code-response .prose ol li::marker {
+  color: #6b7280;
+}
+
+/* Table styling */
+.code-response .prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.9em;
+}
+
+.code-response .prose thead {
+  background-color: #1f2937;
+  border-bottom: 2px solid #4b5563;
+}
+
+.code-response .prose th {
+  padding: 0.75em;
+  text-align: left;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.code-response .prose td {
+  padding: 0.75em;
+  border-bottom: 1px solid #374151;
+}
+
+.code-response .prose tr:nth-child(even) {
+  background-color: #1f2937;
+}
+
+/* Make paragraphs inside lists properly spaced */
+.code-response .prose li p {
+  margin-bottom: 0.5em;
+}
+
+/* Create visual hierarchy for explanations that follow numbered items */
+.code-response .prose h3 + p,
+.code-response .prose h3 + ul,
+.code-response .prose h3 + ol {
+  margin-left: 1em;
+  position: relative;
+}
+
+.code-response .prose h3 + p::before,
+.code-response .prose h3 + ul::before,
+.code-response .prose h3 + ol::before {
+  content: '';
+  position: absolute;
+  left: -1em;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(59, 130, 246, 0.2);
+  border-radius: 1px;
+}
+
+/* Specific styling for bullet points */
+.code-response .prose ul li {
+  position: relative;
+  padding-left: 0.5em;
+}
