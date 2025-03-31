@@ -8,6 +8,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CONVERSATION_UPDATED_EVENT } from "@/app/hooks/useChat";
+import Navbar from "@/app/components/Navbar";
 
 // Component that uses useSearchParams
 function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
@@ -115,51 +116,7 @@ export default function Home() {
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-black">
-            <header className="w-full bg-black border-b border-gray-800 px-4 py-2">
-                <div className="flex justify-between items-center">
-                    <div className="flex items-center space-x-6">
-                        <Image
-                            src="/logo.png"
-                            alt="Lumos AI"
-                            width={120}
-                            height={24}
-                            priority
-                            className="ml-0"
-                        />
-                        
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        <SignedOut>
-                            <SignInButton mode="modal">
-                                <button className="px-4 py-2 text-sm font-medium text-black dark:text-white bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 dark:focus:ring-offset-black border border-gray-300 dark:border-gray-600">
-                                    Sign in
-                                </button>
-                            </SignInButton>
-                            <SignUpButton mode="modal">
-                                <button className="px-4 py-2 text-sm font-medium text-white dark:text-black bg-black dark:bg-white hover:bg-gray-900 dark:hover:bg-gray-100 rounded-lg transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 dark:focus:ring-offset-black border border-gray-700 dark:border-gray-300">
-                                    Sign up
-                                </button>
-                            </SignUpButton>
-                        </SignedOut>
-                        <SignedIn>
-                            <UserButton afterSignOutUrl="/" />
-                        </SignedIn>
-                        
-                        {/* Mobile menu button - moved outside SignedIn context */}
-                        <div className="ml-2">
-                            <button 
-                                onClick={() => setSidebarOpen(!sidebarOpen)}
-                                className="md:hidden text-white p-2"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </header>
+            <Navbar />
 
             <main className="flex flex-1 h-[calc(100vh-128px)]">
                 <Suspense fallback={<ChatLoading />}>
