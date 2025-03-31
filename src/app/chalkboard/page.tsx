@@ -62,7 +62,7 @@ export default function GeminiCodeExecution() {
     ];
 
     return (
-        <div className="container mx-auto px-4 py-8 max-w-5xl text-white">
+        <div className="container mx-auto px-4 py-8 text-white">
             <div className="flex items-center mb-6">
                 <Code className="h-8 w-8 text-blue-400 mr-3" />
                 <h1 className="text-3xl font-bold">Chalkboard (beta)</h1>
