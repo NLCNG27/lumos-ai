@@ -27,20 +27,22 @@ export default function Navbar() {
                     </Link>
 
                     {/* Desktop Navigation */}
-                    <nav className="flex space-x-6">
-                        <Link
-                            href="/"
-                            className="text-gray-300 hover:text-white transition"
-                        >
-                            Chat
-                        </Link>
-                        <Link
-                            href="/chalkboard"
-                            className="text-gray-300 hover:text-white transition"
-                        >
-                            Chalkboard
-                        </Link>
-                    </nav>
+                    <SignedIn>
+                        <nav className="flex space-x-6">
+                            <Link
+                                href="/"
+                                className="text-gray-300 hover:text-white transition"
+                            >
+                                Chat
+                            </Link>
+                            <Link
+                                href="/chalkboard"
+                                className="text-gray-300 hover:text-white transition"
+                            >
+                                Chalkboard
+                            </Link>
+                        </nav>
+                    </SignedIn>
                 </div>
 
                 <div className="flex items-center gap-4">
