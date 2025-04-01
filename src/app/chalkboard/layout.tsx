@@ -10,16 +10,18 @@ export default function GeminiCodeExecutionLayout({
 }) {
     return (
         <div className="min-h-screen bg-black text-white">
-            <Navbar />
             <MainMenu />
+            <div className="ml-16" style={{ marginLeft: "50px" }}>
+                <Navbar />
+                <main className="flex flex-col flex-1 min-h-[calc(100vh-128px)] ml-16 pl-4">
+                    {children}
+                </main>
 
-            <main className="flex flex-col flex-1 min-h-[calc(100vh-128px)] ml-16 pl-4">
-                {children}
-            </main>
-
-            <footer className="bg-black text-gray-500 text-center text-sm p-4 border-t border-gray-800 ml-16 pl-4">
-                &copy; {new Date().getFullYear()} Lumos AI. All rights reserved.
-            </footer>
+                <footer className="bg-black text-gray-500 text-center text-sm p-4 border-t border-gray-800 ml-16 pl-4">
+                    &copy; {new Date().getFullYear()} Lumos AI. All rights
+                    reserved.
+                </footer>
+            </div>
         </div>
     );
 }

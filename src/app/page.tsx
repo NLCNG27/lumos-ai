@@ -4,7 +4,13 @@ import ChatWindow from "@/app/components/chat/ChatWindow";
 import ConversationSidebar from "@/app/components/chat/ConversationSidebar";
 import MainMenu from "@/app/components/MainMenu";
 import Image from "next/image";
-import { SignedIn, SignedOut, UserButton, SignInButton, SignUpButton } from "@clerk/nextjs";
+import {
+    SignedIn,
+    SignedOut,
+    UserButton,
+    SignInButton,
+    SignUpButton,
+} from "@clerk/nextjs";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -15,7 +21,8 @@ import Navbar from "@/app/components/Navbar";
 function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
     const searchParams = useSearchParams();
     const [conversationId, setConversationId] = useState<string | null>(null);
-    const [hasActiveConversation, setHasActiveConversation] = useState<boolean>(false);
+    const [hasActiveConversation, setHasActiveConversation] =
+        useState<boolean>(false);
     const [isRecovering, setIsRecovering] = useState<boolean>(false);
 
     // Get conversation ID from URL if present
@@ -43,7 +50,7 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
             // Clear recovery state after a short delay
             setTimeout(() => setIsRecovering(false), 1000);
         }
-        
+
         // If ID is empty, clear the current conversation
         if (!id || id.trim() === "") {
             setConversationId(null);
@@ -54,12 +61,12 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
             window.history.pushState({}, "", url);
             return;
         }
-        
+
         // Update URL with the conversation ID
         const url = new URL(window.location.href);
         url.searchParams.set("conversation", id);
         window.history.pushState({}, "", url);
-        
+
         // Update state
         setConversationId(id);
         setHasActiveConversation(true);
@@ -71,16 +78,22 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
                 {/* Main chat container */}
                 <div className="flex w-full h-full">
                     {/* Sidebar for conversations */}
-                    <div className={`${sidebarOpen ? 'w-64' : 'w-0'} md:w-72 flex-shrink-0 transition-all duration-300 h-full overflow-hidden`}>
-                        <ConversationSidebar 
-                            currentConversationId={conversationId} 
-                            onSelectConversation={handleSelectConversation} 
+                    <div
+                        className={`${
+                            sidebarOpen ? "w-64" : "w-0"
+                        } md:w-72 flex-shrink-0 transition-all duration-300 h-full overflow-hidden`}
+                    >
+                        <ConversationSidebar
+                            currentConversationId={conversationId}
+                            onSelectConversation={handleSelectConversation}
                         />
                     </div>
 
                     {/* Main chat area */}
                     <div className="flex-1 flex flex-col h-full overflow-hidden">
-                        <ChatWindow initialConversationId={conversationId || undefined} />
+                        <ChatWindow
+                            initialConversationId={conversationId || undefined}
+                        />
                     </div>
                 </div>
             </SignedIn>
@@ -120,27 +133,28 @@ export default function Home() {
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-black">
-            <Navbar />
             <MainMenu />
+            <div className="ml-16" style={{ marginLeft: "50px" }}>
+                <Navbar />
+                <main className="flex flex-1 h-[calc(100vh-128px)] ml-16 pl-4">
+                    <Suspense fallback={<ChatLoading />}>
+                        <ChatContent sidebarOpen={sidebarOpen} />
+                    </Suspense>
+                </main>
 
-            <main className="flex flex-1 h-[calc(100vh-128px)] ml-16 pl-4">
-                <Suspense fallback={<ChatLoading />}>
-                    <ChatContent sidebarOpen={sidebarOpen} />
-                </Suspense>
-            </main>
-
-            <footer className="bg-black text-gray-500 text-center text-sm p-4 border-t border-gray-800 ml-16 pl-4">
-                &copy; {new Date().getFullYear()} Lumos AI. Developed by{" "}
-                <a
-                    href="https://www.cngsoftware.com/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:text-blue-300"
-                >
-                    CNG Software
-                </a>
-                . All rights reserved.
-            </footer>
+                <footer className="bg-black text-gray-500 text-center text-sm p-4 border-t border-gray-800 ml-16 pl-4">
+                    &copy; {new Date().getFullYear()} Lumos AI. Developed by{" "}
+                    <a
+                        href="https://www.cngsoftware.com/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400 hover:text-blue-300"
+                    >
+                        CNG Software
+                    </a>
+                    . All rights reserved.
+                </footer>
+            </div>
         </div>
     );
 }
