@@ -4,7 +4,13 @@ import ChatWindow from "@/app/components/chat/ChatWindow";
 import ConversationSidebar from "@/app/components/chat/ConversationSidebar";
 import MainMenu from "@/app/components/MainMenu";
 import Image from "next/image";
-import { SignedIn, SignedOut, UserButton, SignInButton, SignUpButton } from "@clerk/nextjs";
+import {
+    SignedIn,
+    SignedOut,
+    UserButton,
+    SignInButton,
+    SignUpButton,
+} from "@clerk/nextjs";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -15,7 +21,8 @@ import Navbar from "@/app/components/Navbar";
 function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
     const searchParams = useSearchParams();
     const [conversationId, setConversationId] = useState<string | null>(null);
-    const [hasActiveConversation, setHasActiveConversation] = useState<boolean>(false);
+    const [hasActiveConversation, setHasActiveConversation] =
+        useState<boolean>(false);
     const [isRecovering, setIsRecovering] = useState<boolean>(false);
 
     // Get conversation ID from URL if present
@@ -43,7 +50,7 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
             // Clear recovery state after a short delay
             setTimeout(() => setIsRecovering(false), 1000);
         }
-        
+
         // If ID is empty, clear the current conversation
         if (!id || id.trim() === "") {
             setConversationId(null);
@@ -54,12 +61,12 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
             window.history.pushState({}, "", url);
             return;
         }
-        
+
         // Update URL with the conversation ID
         const url = new URL(window.location.href);
         url.searchParams.set("conversation", id);
         window.history.pushState({}, "", url);
-        
+
         // Update state
         setConversationId(id);
         setHasActiveConversation(true);
@@ -71,16 +78,22 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
                 {/* Main chat container */}
                 <div className="flex w-full h-full">
                     {/* Sidebar for conversations */}
-                    <div className={`${sidebarOpen ? 'w-64' : 'w-0'} md:w-64 flex-shrink-0 transition-all duration-300 h-full`}>
-                        <ConversationSidebar 
-                            currentConversationId={conversationId} 
-                            onSelectConversation={handleSelectConversation} 
+                    <div
+                        className={`${
+                            sidebarOpen ? "w-64" : "w-0"
+                        } md:w-64 flex-shrink-0 transition-all duration-300 h-full`}
+                    >
+                        <ConversationSidebar
+                            currentConversationId={conversationId}
+                            onSelectConversation={handleSelectConversation}
                         />
                     </div>
 
                     {/* Main chat area */}
                     <div className="flex-1 h-full">
-                        <ChatWindow initialConversationId={conversationId || undefined} />
+                        <ChatWindow
+                            initialConversationId={conversationId || undefined}
+                        />
                     </div>
                 </div>
             </SignedIn>

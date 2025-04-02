@@ -18,7 +18,16 @@ export default function GeminiCodeExecutionLayout({
             </main>
 
             <footer className="bg-black text-gray-500 text-center text-sm p-4 border-t border-gray-800 ml-16">
-                &copy; {new Date().getFullYear()} Lumos AI. All rights reserved.
+                &copy; {new Date().getFullYear()} Lumos AI. Developed by{" "}
+                <a
+                    href="https://www.cngsoftware.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:text-blue-300"
+                >
+                    CNG Software
+                </a>
+                . All rights reserved.
             </footer>
         </div>
     );
