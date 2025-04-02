@@ -724,8 +724,9 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
 
     // Render generated files from code execution
     const renderGeneratedFiles = () => {
-        if (!message.generatedFiles || message.generatedFiles.length === 0) return null;
-        
+        if (!message.generatedFiles || message.generatedFiles.length === 0)
+            return null;
+
         return <GeneratedFilesList files={message.generatedFiles} />;
     };
 
@@ -795,33 +796,36 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                 </div>
 
                 {/* Show grounding sources if available */}
-                {message.groundingSources && message.groundingSources.length > 0 && (
-                    <div className="mt-3 border-t border-gray-700 pt-3">
-                        <div className="text-sm font-medium mb-2 text-blue-300">
-                            Sources:
+                {message.groundingSources &&
+                    message.groundingSources.length > 0 && (
+                        <div className="mt-3 border-t border-gray-700 pt-3">
+                            <div className="text-sm font-medium mb-2 text-blue-300">
+                                Sources:
+                            </div>
+                            <div className="space-y-2">
+                                {message.groundingSources.map(
+                                    (source, index) => (
+                                        <div
+                                            key={index}
+                                            className="text-xs bg-gray-900 rounded p-2"
+                                        >
+                                            <a
+                                                href={source.link}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="font-medium text-blue-400 hover:underline block mb-1"
+                                            >
+                                                {source.title}
+                                            </a>
+                                            <div className="text-gray-300">
+                                                {source.snippet}
+                                            </div>
+                                        </div>
+                                    )
+                                )}
+                            </div>
                         </div>
-                        <div className="space-y-2">
-                            {message.groundingSources.map((source, index) => (
-                                <div
-                                    key={index}
-                                    className="text-xs bg-gray-900 rounded p-2"
-                                >
-                                    <a
-                                        href={source.link}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="font-medium text-blue-400 hover:underline block mb-1"
-                                    >
-                                        {source.title}
-                                    </a>
-                                    <div className="text-gray-300">
-                                        {source.snippet}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                    )}
 
                 {/* Show generated files if available */}
                 {renderGeneratedFiles()}

@@ -29,10 +29,10 @@ export default function FileUpload({
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
             const filesArray = Array.from(e.dataTransfer.files);
             onFileSelect(filesArray);
-            
+
             // Reset the file input to allow selecting the same file again
             if (fileInputRef.current) {
-                fileInputRef.current.value = '';
+                fileInputRef.current.value = "";
             }
         }
     };
@@ -41,9 +41,9 @@ export default function FileUpload({
         if (e.target.files && e.target.files.length > 0) {
             const filesArray = Array.from(e.target.files);
             onFileSelect(filesArray);
-            
+
             // Reset the file input to allow selecting the same file again
-            e.target.value = '';
+            e.target.value = "";
         }
     };
 

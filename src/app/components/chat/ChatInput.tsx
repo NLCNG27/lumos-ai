@@ -8,7 +8,12 @@ import CodeExecutionToggle from "./CodeExecutionToggle";
 import React from "react";
 
 type ChatInputProps = {
-    onSendMessage: (message: string, files?: UploadedFile[], useGroundingSearch?: boolean, useCodeExecution?: boolean) => void;
+    onSendMessage: (
+        message: string,
+        files?: UploadedFile[],
+        useGroundingSearch?: boolean,
+        useCodeExecution?: boolean
+    ) => void;
     isLoading: boolean;
     showWebSearch?: boolean;
 };
@@ -30,14 +35,19 @@ export default function ChatInput({
         if (input.trim().length > 0) {
             // Only dispatch event if we have a non-empty input
             // This helps indicate that we have an active conversation in progress
-            dispatchConversationUpdate('typing');
+            dispatchConversationUpdate("typing");
         }
     }, [input]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if ((input.trim() || uploadedFiles.length > 0) && !isLoading) {
-            onSendMessage(input, uploadedFiles, useGroundingSearch, useCodeExecution);
+            onSendMessage(
+                input,
+                uploadedFiles,
+                useGroundingSearch,
+                useCodeExecution
+            );
             setInput("");
             setUploadedFiles([]);
         }
@@ -48,7 +58,12 @@ export default function ChatInput({
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             if ((input.trim() || uploadedFiles.length > 0) && !isLoading) {
-                onSendMessage(input, uploadedFiles, useGroundingSearch, useCodeExecution);
+                onSendMessage(
+                    input,
+                    uploadedFiles,
+                    useGroundingSearch,
+                    useCodeExecution
+                );
                 setInput("");
                 setUploadedFiles([]);
             }
@@ -167,32 +182,42 @@ export default function ChatInput({
                             onFileSelect={handleFileSelect}
                             isLoading={isLoading}
                         />
-                        
+
                         {showWebSearch && (
                             <button
                                 type="button"
-                                onClick={() => setUseGroundingSearch(!useGroundingSearch)}
+                                onClick={() =>
+                                    setUseGroundingSearch(!useGroundingSearch)
+                                }
                                 className="flex items-center justify-center h-8 w-8 text-sm rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors relative group"
-                                aria-label={useGroundingSearch ? "Disable Google Search grounding" : "Enable Google Search grounding"}
+                                aria-label={
+                                    useGroundingSearch
+                                        ? "Disable Google Search grounding"
+                                        : "Enable Google Search grounding"
+                                }
                             >
-                                <svg 
-                                    xmlns="http://www.w3.org/2000/svg" 
-                                    className={`h-5 w-5 ${useGroundingSearch ? "text-blue-600" : "text-gray-400"}`}
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className={`h-5 w-5 ${
+                                        useGroundingSearch
+                                            ? "text-blue-600"
+                                            : "text-gray-400"
+                                    }`}
                                     fill="none"
                                     viewBox="0 0 24 24"
                                     stroke="currentColor"
                                 >
-                                    <path 
-                                        strokeLinecap="round" 
-                                        strokeLinejoin="round" 
-                                        strokeWidth={2} 
-                                        d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" 
+                                    <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"
                                     />
                                 </svg>
                             </button>
                         )}
                     </div>
-                    
+
                     <textarea
                         ref={textareaRef}
                         value={input}
@@ -205,10 +230,18 @@ export default function ChatInput({
                     <button
                         type="button"
                         onClick={handleSubmit}
-                        disabled={isLoading || (!input.trim() && uploadedFiles.length === 0)}
+                        disabled={
+                            isLoading ||
+                            (!input.trim() && uploadedFiles.length === 0)
+                        }
                         className="ml-2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-5 w-5"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                        >
                             <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
                         </svg>
                     </button>
