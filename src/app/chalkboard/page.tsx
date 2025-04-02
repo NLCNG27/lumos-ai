@@ -148,17 +148,13 @@ export default function GeminiCodeExecution() {
                                                 key={index}
                                                 className="p-4 border border-gray-700 bg-gray-900 rounded-md"
                                             >
-                                                <p className="mb-2 text-gray-300">
-                                                    <strong>Type:</strong>{" "}
-                                                    {item.mimeType}
-                                                </p>
                                                 {item.mimeType.startsWith(
                                                     "image/"
                                                 ) ? (
                                                     <img
                                                         src={`data:${item.mimeType};base64,${item.data}`}
                                                         alt={`Generated image ${index}`}
-                                                        className="max-w-full h-auto"
+                                                        className="max-w-full h-auto max-h-[400px] mx-auto"
                                                     />
                                                 ) : (
                                                     <p className="text-gray-300">
