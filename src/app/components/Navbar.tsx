@@ -22,7 +22,7 @@ export default function Navbar() {
     return (
         <header className="w-full bg-black border-b border-gray-800 px-4 py-2">
             <div className="flex justify-between items-center">
-                <div className="flex items-center space-x-6">
+                <div className="flex items-center space-x-6" style={{ marginLeft: "50px" }}>
                     <Link href="/">
                         <Image
                             src="/logo.png"
