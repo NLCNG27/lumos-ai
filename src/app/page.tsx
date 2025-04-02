@@ -71,7 +71,7 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
                 {/* Main chat container */}
                 <div className="flex w-full h-full">
                     {/* Sidebar for conversations */}
-                    <div className={`${sidebarOpen ? 'w-64' : 'w-0'} md:w-72 flex-shrink-0 transition-all duration-300 h-full overflow-hidden`}>
+                    <div className={`${sidebarOpen ? 'w-64' : 'w-0'} md:w-72 flex-shrink-0 transition-all duration-300 h-full`}>
                         <ConversationSidebar 
                             currentConversationId={conversationId} 
                             onSelectConversation={handleSelectConversation} 
@@ -79,7 +79,7 @@ function ChatContent({ sidebarOpen }: { sidebarOpen: boolean }) {
                     </div>
 
                     {/* Main chat area */}
-                    <div className="flex-1 flex flex-col h-full overflow-hidden">
+                    <div className="flex-1 h-full">
                         <ChatWindow initialConversationId={conversationId || undefined} />
                     </div>
                 </div>

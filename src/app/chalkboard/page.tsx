@@ -104,9 +104,6 @@ export default function GeminiCodeExecution() {
                 </div>
 
                 <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 mb-6">
-                    <div className="mb-2 text-sm text-gray-300">
-                        Enter your prompt for code execution:
-                    </div>
 
                     <ChatInput
                         onSendMessage={handleSendMessage}
