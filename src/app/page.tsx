@@ -123,13 +123,13 @@ export default function Home() {
             <Navbar />
             <MainMenu />
 
-            <main className="flex flex-1 h-[calc(100vh-128px)] ml-16 pl-4">
+            <main className="flex flex-1 h-[calc(100vh-128px)] ml-16">
                 <Suspense fallback={<ChatLoading />}>
                     <ChatContent sidebarOpen={sidebarOpen} />
                 </Suspense>
             </main>
 
-            <footer className="bg-black text-gray-500 text-center text-sm p-4 border-t border-gray-800 ml-16 pl-4">
+            <footer className="bg-black text-gray-500 text-center text-sm p-4 border-t border-gray-800 ml-16">
                 &copy; {new Date().getFullYear()} Lumos AI. Developed by{" "}
                 <a
                     href="https://www.cngsoftware.com/"

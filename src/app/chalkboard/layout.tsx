@@ -13,11 +13,11 @@ export default function GeminiCodeExecutionLayout({
             <Navbar />
             <MainMenu />
 
-            <main className="flex flex-col flex-1 min-h-[calc(100vh-128px)] ml-16 pl-4">
+            <main className="flex flex-col flex-1 min-h-[calc(100vh-128px)] ml-16">
                 {children}
             </main>
 
-            <footer className="bg-black text-gray-500 text-center text-sm p-4 border-t border-gray-800 ml-16 pl-4">
+            <footer className="bg-black text-gray-500 text-center text-sm p-4 border-t border-gray-800 ml-16">
                 &copy; {new Date().getFullYear()} Lumos AI. All rights reserved.
             </footer>
         </div>
