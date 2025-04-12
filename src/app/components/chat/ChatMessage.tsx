@@ -38,13 +38,11 @@ interface CodeProps extends React.HTMLAttributes<HTMLElement> {
 const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
     const isUser = message.role === "user";
     const [isCopied, setIsCopied] = useState(false);
-    // Add state for code block context menu
     const [activeCodeBlock, setActiveCodeBlock] = useState<{
         content: string;
         language: string;
     } | null>(null);
     const codeBlockRef = useRef<HTMLDivElement>(null);
-    // Add state for dataset detection
     const [datasets, setDatasets] = useState<
         Array<{
             content: string;
@@ -54,6 +52,40 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
             fullMatch?: string;
         }>
     >([]);
+
+    // Format timestamp in a user-friendly way
+    const formatTimestamp = (timestamp: Date | string) => {
+        const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+        const now = new Date();
+        const diff = now.getTime() - date.getTime();
+        const diffMinutes = Math.floor(diff / 60000);
+        const diffHours = Math.floor(diff / 3600000);
+        const diffDays = Math.floor(diff / 86400000);
+
+        // For messages less than a minute old
+        if (diffMinutes < 1) {
+            return 'Just now';
+        }
+        // For messages less than an hour old
+        if (diffMinutes < 60) {
+            return `${diffMinutes}m ago`;
+        }
+        // For messages less than a day old
+        if (diffHours < 24) {
+            return `${diffHours}h ago`;
+        }
+        // For messages less than a week old
+        if (diffDays < 7) {
+            return `${diffDays}d ago`;
+        }
+        // For older messages, show the full date
+        return date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+    };
 
     const copyToClipboard = () => {
         navigator.clipboard
@@ -385,7 +417,7 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
                                         strokeLinecap="round"
                                         strokeLinejoin="round"
                                         strokeWidth={2}
-                                        d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2"
+                                        d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-.9V8H8V5z"
                                     />
                                 </svg>
                                 Copy
@@ -731,128 +763,85 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
     };
 
     return (
-        <div
-            className={`flex ${
-                isUser ? "justify-end text-right" : "justify-start"
-            }`}
-        >
-            <div
-                className={`max-w-[85%] sm:max-w-[80%] lg:max-w-[75%] rounded-lg px-4 py-2 relative ${
-                    isUser
-                        ? "bg-blue-600 text-white rounded-br-none"
-                        : "bg-gray-800 text-white rounded-bl-none"
-                }`}
-            >
-                {!isUser && (
-                    <div className="absolute -top-2 -right-2">
-                        <button
-                            onClick={copyToClipboard}
-                            className="text-gray-400 hover:text-white p-1 rounded-full transition-colors bg-gray-700 hover:bg-gray-600"
-                            title="Copy to clipboard"
+        <div className={`flex w-full ${isUser ? 'justify-start' : 'justify-start'} mb-4`}>
+            <div className={`relative flex-1 px-4`}>
+                <div className={`message-bubble ${isUser ? 'user-message bg-indigo-700/30 border border-indigo-500/30' : 'ai-message bg-gray-800/70 border border-gray-600/30'} rounded-lg p-4 text-sm w-full backdrop-blur-sm shadow-sm`}>
+                    {renderUploadedFiles()}
+
+                    <div ref={codeBlockRef} className="markdown-content">
+                        <ReactMarkdown
+                            components={markdownComponents}
+                            remarkPlugins={[remarkGfm, remarkMath]} 
+                            rehypePlugins={[rehypeKatex]}
                         >
-                            {isCopied ? (
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="h-4 w-4"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                >
-                                    <path
-                                        fillRule="evenodd"
-                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                        clipRule="evenodd"
-                                    />
-                                </svg>
-                            ) : (
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="h-4 w-4"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                >
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={2}
-                                        d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
-                                    />
-                                </svg>
-                            )}
-                        </button>
+                            {processLatexContent(message.content)}
+                        </ReactMarkdown>
                     </div>
-                )}
 
-                {renderUploadedFiles()}
-
-                <div ref={codeBlockRef} className="markdown-content">
-                    <ReactMarkdown
-                        components={markdownComponents}
-                        remarkPlugins={[remarkGfm, remarkMath]}
-                        rehypePlugins={[rehypeKatex]}
-                    >
-                        {processLatexContent(message.content)}
-                    </ReactMarkdown>
-                </div>
-
-                {/* Show grounding sources if available */}
-                {message.groundingSources &&
-                    message.groundingSources.length > 0 && (
-                        <div className="mt-3 border-t border-gray-700 pt-3">
-                            <div className="text-sm font-medium mb-2 text-blue-300">
-                                Sources:
-                            </div>
-                            <div className="space-y-2">
-                                {message.groundingSources.map(
-                                    (source, index) => (
-                                        <div
-                                            key={index}
-                                            className="text-xs bg-gray-900 rounded p-2"
-                                        >
-                                            <a
-                                                href={source.link}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="font-medium text-blue-400 hover:underline block mb-1"
+                    {/* Show grounding sources if available */}
+                    {message.groundingSources &&
+                        message.groundingSources.length > 0 && (
+                            <div className="mt-3 border-t border-gray-700 pt-3">
+                                <div className="text-sm font-medium mb-2 text-blue-300">
+                                    Sources:
+                                </div>
+                                <div className="space-y-2">
+                                    {message.groundingSources.map(
+                                        (source, index) => (
+                                            <div
+                                                key={index}
+                                                className="text-xs bg-gray-900 rounded p-2"
                                             >
-                                                {source.title}
-                                            </a>
-                                            <div className="text-gray-300">
-                                                {source.snippet}
+                                                <a
+                                                    href={source.link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="font-medium text-blue-400 hover:underline block mb-1"
+                                                >
+                                                    {source.title}
+                                                </a>
+                                                <div className="text-gray-300">
+                                                    {source.snippet}
+                                                </div>
                                             </div>
-                                        </div>
-                                    )
-                                )}
+                                        )
+                                    )}
+                                </div>
                             </div>
+                        )}
+
+                    {/* Show generated files if available */}
+                    {renderGeneratedFiles()}
+
+                    {/* Show dataset previews */}
+                    {datasets.length > 0 && (
+                        <div className="mt-3">
+                            {datasets.map((dataset, index) => (
+                                <DatasetPreview
+                                    key={index}
+                                    content={dataset.content}
+                                    format={dataset.format}
+                                    filename={dataset.filename}
+                                    mimeType={dataset.mimeType}
+                                />
+                            ))}
                         </div>
                     )}
 
-                {/* Show generated files if available */}
-                {renderGeneratedFiles()}
-
-                {/* Show dataset previews */}
-                {datasets.length > 0 && (
-                    <div className="mt-3">
-                        {datasets.map((dataset, index) => (
-                            <DatasetPreview
-                                key={index}
-                                content={dataset.content}
-                                format={dataset.format}
-                                filename={dataset.filename}
-                                mimeType={dataset.mimeType}
-                            />
-                        ))}
+                    {/* Show code block menu if active */}
+                    {activeCodeBlock && (
+                        <CodeBlockMenu
+                            content={activeCodeBlock.content}
+                            language={activeCodeBlock.language}
+                            codeBlockRef={codeBlockRef}
+                        />
+                    )}
+                    
+                    {/* Timestamp moved to the bottom */}
+                    <div className="text-xs text-gray-400 mt-2">
+                        {message.timestamp ? formatTimestamp(message.timestamp) : ''}
                     </div>
-                )}
-
-                {/* Show code block menu if active */}
-                {activeCodeBlock && (
-                    <CodeBlockMenu
-                        content={activeCodeBlock.content}
-                        language={activeCodeBlock.language}
-                        codeBlockRef={codeBlockRef}
-                    />
-                )}
+                </div>
             </div>
         </div>
     );

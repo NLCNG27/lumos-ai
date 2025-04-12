@@ -441,3 +441,32 @@ body {
   position: relative;
   padding-left: 0.5em;
 }
+
+/* Message bubble styling */
+.message-bubble {
+  max-width: 100%;
+  position: relative;
+}
+
+.user-message {
+  background-color: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.ai-message {
+  background-color: rgba(75, 85, 99, 0.1);
+  border: 1px solid rgba(75, 85, 99, 0.2);
+}
+
+/* Dark mode styles */
+@media (prefers-color-scheme: dark) {
+  .user-message {
+    background-color: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+  }
+  
+  .ai-message {
+    background-color: rgba(75, 85, 99, 0.2);
+    border: 1px solid rgba(75, 85, 99, 0.3);
+  }
+}
