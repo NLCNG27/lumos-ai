@@ -302,37 +302,63 @@ const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
             />
         ),
         table: ({ ...props }: any) => (
-            <div className="overflow-x-auto my-3">
+            <div className="overflow-x-auto my-4 rounded-lg shadow-sm border border-gray-300 dark:border-gray-600">
                 <table
-                    className="min-w-full divide-y divide-gray-300 dark:divide-gray-600 border border-gray-300 dark:border-gray-600 rounded text-base"
+                    className="min-w-full divide-y divide-gray-300 dark:divide-gray-600 rounded-lg text-base"
                     {...props}
                 />
             </div>
         ),
         thead: ({ ...props }: any) => (
-            <thead className="bg-gray-100 dark:bg-gray-700" {...props} />
+            <thead className="bg-gray-100 dark:bg-gray-700/70" {...props} />
         ),
         tbody: ({ ...props }: any) => (
             <tbody
-                className="divide-y divide-gray-200 dark:divide-gray-700"
+                className="divide-y divide-gray-200 dark:divide-gray-700 bg-white/5 backdrop-blur-sm"
                 {...props}
             />
         ),
-        tr: ({ ...props }: any) => (
-            <tr
-                className="hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                {...props}
-            />
-        ),
+        tr: ({ ...props }: any) => {
+            // Add zebra striping to rows
+            const childrenCount = React.Children.count(props.children);
+            // Only apply special styling if this is a data row (has more than 1 child)
+            const isDataRow = childrenCount > 1;
+            
+            return (
+                <tr
+                    className={`
+                        hover:bg-gray-50/10 dark:hover:bg-gray-700/30 transition-colors
+                        ${isDataRow ? 'even:bg-gray-50/5 dark:even:bg-gray-800/20' : ''}
+                    `}
+                    {...props}
+                />
+            );
+        },
         th: ({ ...props }: any) => (
             <th
-                className="px-3 py-2 text-left text-sm font-medium text-gray-700 dark:text-gray-300 uppercase tracking-wider"
+                className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider border-r border-gray-200 dark:border-gray-700 last:border-r-0"
                 {...props}
             />
         ),
-        td: ({ ...props }: any) => (
-            <td className="px-3 py-2 whitespace-nowrap text-base" {...props} />
-        ),
+        td: ({ ...props }: any) => {
+            // Check if content is likely a number to apply right alignment
+            const isNumber = React.Children.toArray(props.children).some(child => {
+                if (typeof child === 'string') {
+                    // Test if the string matches a number format (including decimals and negative numbers)
+                    return /^-?\d+(\.\d+)?$/.test(child.trim());
+                }
+                return false;
+            });
+            
+            return (
+                <td 
+                    className={`px-4 py-3 text-base border-r border-gray-200 dark:border-gray-700 last:border-r-0 ${
+                        isNumber ? 'text-right font-mono bg-blue-50/5 dark:bg-blue-900/10' : ''
+                    }`} 
+                    {...props} 
+                />
+            );
+        },
         code: ({ className, children, inline, ...props }: CodeProps) => {
             const match = /language-(\w+)/.exec(className || "");
 
