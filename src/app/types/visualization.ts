@@ -11,4 +11,12 @@ export type ChartDataType = {
 export type DatasetItem = {
   label: string;
   data: number[];
+};
+
+// Define comparison view type for multi-chart comparisons
+export type ComparisonView = {
+  id: string;
+  chartType: "line" | "bar" | "area" | "scatter" | "bubble";
+  title: string;
+  selectedDatasets: number[]; // Indices of selected datasets
 }; 

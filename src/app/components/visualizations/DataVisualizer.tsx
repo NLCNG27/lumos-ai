@@ -20,9 +20,11 @@ import {
     ScatterController,
     LineController,
     BarController,
+    Filler,
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
-import { ChartDataType } from "@/app/types/visualization";
+import { ChartDataType, ComparisonView } from "@/app/types/visualization";
+import { X, PlusCircle, Copy, Settings, Grid2X2, GridIcon, RefreshCw } from "lucide-react";
 
 // Register Chart.js components including Decimation for large datasets
 ChartJS.register(
@@ -40,6 +42,7 @@ ChartJS.register(
     Title,
     Tooltip,
     Legend,
+    Filler, // Add Filler plugin for area charts
     Decimation // Add decimation for large datasets
 );
 
@@ -127,6 +130,18 @@ const downsampleLabels = (
     return result;
 };
 
+// Function to create a new comparison view with deterministic IDs
+const createDefaultView = (chartType: "line" | "bar" | "area" | "scatter" | "bubble", index: number, allDatasets: any[]): ComparisonView => {
+    return {
+        id: `chart-view-${chartType}-${Date.now()}-${index}`, // Add timestamp to ensure uniqueness
+        chartType,
+        title: `${chartType.charAt(0).toUpperCase() + chartType.slice(1)} Chart`,
+        selectedDatasets: allDatasets.length <= 2 
+            ? allDatasets.map((_, i) => i) // Select all datasets if 2 or fewer
+            : [0] // Select only the first dataset if more than 2
+    };
+};
+
 export default function DataVisualizer({
     data,
 }: {
@@ -139,6 +154,23 @@ export default function DataVisualizer({
     const [copyStatus, setCopyStatus] = useState<string | null>(null);
     const [showChartOptions, setShowChartOptions] = useState(false);
     const [renderError, setRenderError] = useState(false);
+    
+    // Multi-chart comparison mode
+    const [comparisonMode, setComparisonMode] = useState(false);
+    const [comparisonViews, setComparisonViews] = useState<ComparisonView[]>([]);
+    const [gridLayout, setGridLayout] = useState<"2x2" | "2x1" | "1x2">("2x2");
+    const [openSettingsId, setOpenSettingsId] = useState<string | null>(null);
+    
+    // Initialize comparison views when data changes or when entering comparison mode
+    useEffect(() => {
+        if (data && comparisonMode && comparisonViews.length === 0) {
+            // Create two default views for comparison
+            setComparisonViews([
+                createDefaultView("line", 0, data.datasets),
+                createDefaultView("bar", 1, data.datasets)
+            ]);
+        }
+    }, [data, comparisonMode, comparisonViews.length]);
 
     // Reset chart on unmount to prevent memory leaks
     useEffect(() => {
@@ -489,6 +521,148 @@ export default function DataVisualizer({
         }
     };
 
+    // Function to add a new comparison view
+    const addComparisonView = () => {
+        if (comparisonViews.length >= 4) return; // Maximum of 4 views
+        
+        // Cycle through different chart types for each new view
+        const chartTypes: Array<"line" | "bar" | "area" | "scatter" | "bubble"> = ["line", "bar", "area", "scatter", "bubble"];
+        const nextType = chartTypes[comparisonViews.length % chartTypes.length];
+        
+        setComparisonViews([...comparisonViews, createDefaultView(nextType, comparisonViews.length, data.datasets)]);
+    };
+    
+    // Function to remove a comparison view
+    const removeComparisonView = (id: string) => {
+        if (comparisonViews.length <= 1) {
+            // If removing the last view, exit comparison mode
+            setComparisonMode(false);
+            return;
+        }
+        
+        setComparisonViews(comparisonViews.filter(view => view.id !== id));
+    };
+    
+    // Function to update a comparison view
+    const updateComparisonView = (id: string, updates: Partial<ComparisonView>) => {
+        setComparisonViews(
+            comparisonViews.map(view => 
+                view.id === id ? { ...view, ...updates } : view
+            )
+        );
+    };
+    
+    // Toggle comparison mode
+    const toggleComparisonMode = () => {
+        const newMode = !comparisonMode;
+        setComparisonMode(newMode);
+        
+        if (!newMode) {
+            // When exiting comparison mode, clear views
+            setComparisonViews([]);
+        }
+    };
+    
+    // Function to cycle through grid layouts
+    const cycleGridLayout = () => {
+        if (gridLayout === "2x2") setGridLayout("2x1");
+        else if (gridLayout === "2x1") setGridLayout("1x2");
+        else setGridLayout("2x2");
+    };
+    
+    // Generate chart for comparison view
+    const renderComparisonChart = (view: ComparisonView) => {
+        // Create a filtered version of chartData including only selected datasets
+        const filteredChartData = {
+            labels: chartData.labels,
+            datasets: view.selectedDatasets.map(index => 
+                chartData.datasets[index]
+            )
+        };
+        
+        const tooFewPointsForCurves = sanitizedData.labels.length <= 3;
+        let actualType = view.chartType;
+        
+        // Safety checks for chart type
+        if ((view.chartType === "line" || view.chartType === "area") && tooFewPointsForCurves) {
+            actualType = "bar";
+        }
+        
+        if (view.chartType === "area") {
+            actualType = "line"; // Area is just a line with fill=true
+        }
+        
+        return (
+            <Chart
+                type={actualType as any}
+                data={{
+                    labels: filteredChartData.labels,
+                    datasets: filteredChartData.datasets.map((dataset, index) => ({
+                        ...dataset,
+                        borderWidth: view.chartType === "line" || view.chartType === "area" ? 2 : 0,
+                        tension: 0, // Disable tension for all charts to prevent errors
+                        fill: view.chartType === "area" ? true : false,
+                    })),
+                } as any}
+                options={{
+                    ...options,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        ...options.plugins,
+                        title: {
+                            display: true,
+                            text: view.title,
+                            color: "rgba(255, 255, 255, 0.9)",
+                            font: {
+                                size: 14,
+                                weight: 'bold'
+                            }
+                        },
+                        legend: {
+                            ...options.plugins?.legend,
+                            position: 'bottom' as const,
+                        }
+                    }
+                }}
+                className="w-full h-full"
+            />
+        );
+    };
+    
+    // Function to toggle a dataset in a comparison view
+    const toggleDatasetInView = (viewId: string, datasetIndex: number) => {
+        setComparisonViews(
+            comparisonViews.map(view => {
+                if (view.id !== viewId) return view;
+                
+                const isSelected = view.selectedDatasets.includes(datasetIndex);
+                let newSelectedDatasets: number[];
+                
+                if (isSelected) {
+                    // Remove dataset if it's already selected
+                    newSelectedDatasets = view.selectedDatasets.filter(i => i !== datasetIndex);
+                    // Ensure at least one dataset is selected
+                    if (newSelectedDatasets.length === 0) {
+                        return view;
+                    }
+                } else {
+                    // Add dataset if it's not already selected
+                    newSelectedDatasets = [...view.selectedDatasets, datasetIndex];
+                }
+                
+                return {
+                    ...view,
+                    selectedDatasets: newSelectedDatasets
+                };
+            })
+        );
+    };
+    
+    // Function to toggle settings for a chart
+    const toggleSettings = (id: string) => {
+        setOpenSettingsId(openSettingsId === id ? null : id);
+    };
+
     return (
         <div className="w-full h-full">
             <div className="flex justify-between mb-2 items-center">
@@ -516,148 +690,283 @@ export default function DataVisualizer({
                                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                             </svg>
                         ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path d="M8 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" />
-                                <path d="M6 3a2 2 0 00-2 2v11a2 2 0 002 2h8a2 2 0 002-2V5a2 2 0 00-2-2 3 3 0 01-3 3H9a3 3 0 01-3-3z" />
-                            </svg>
+                            <Copy className="h-5 w-5" />
                         )}
                     </button>
-                    <div className="relative">
-                        <button
-                            onClick={toggleChartOptions}
-                            className="px-3 py-1 bg-gray-800 text-white text-sm rounded hover:bg-gray-700 transition-colors flex items-center"
-                        >
-                            <span className="mr-1">{
-                                chartType === "line" ? "Line Chart" : 
-                                chartType === "bar" ? "Bar Chart" : 
-                                chartType === "area" ? "Area Chart" : 
-                                chartType === "scatter" ? "Scatter Plot" : 
-                                "Bubble Chart"
-                            }</span>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                            </svg>
-                        </button>
-                        
-                        {showChartOptions && (
-                            <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded shadow-lg z-10 w-40">
-                                <ul className="py-1">
-                                    <li>
-                                        <button 
-                                            onClick={() => selectChartType("line")}
-                                            className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "line" ? "bg-gray-700" : ""}`}
-                                        >
-                                            Line Chart
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button 
-                                            onClick={() => selectChartType("area")}
-                                            className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "area" ? "bg-gray-700" : ""}`}
-                                        >
-                                            Area Chart
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button 
-                                            onClick={() => selectChartType("bar")}
-                                            className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "bar" ? "bg-gray-700" : ""}`}
-                                        >
-                                            Bar Chart
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button 
-                                            onClick={() => selectChartType("scatter")}
-                                            className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "scatter" ? "bg-gray-700" : ""}`}
-                                        >
-                                            Scatter Plot
-                                        </button>
-                                    </li>
-                                    <li>
-                                        <button 
-                                            onClick={() => selectChartType("bubble")}
-                                            className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "bubble" ? "bg-gray-700" : ""}`}
-                                        >
-                                            Bubble Chart
-                                        </button>
-                                    </li>
-                                </ul>
-                            </div>
-                        )}
-                    </div>
+                    
+                    <button
+                        onClick={toggleComparisonMode}
+                        className={`px-3 py-1 text-white text-sm rounded hover:bg-gray-700 transition-colors flex items-center ${
+                            comparisonMode ? 'bg-blue-600' : 'bg-gray-800'
+                        }`}
+                        title="Toggle comparison mode"
+                    >
+                        <Grid2X2 className="h-5 w-5 mr-1" />
+                        Compare
+                    </button>
+                    
+                    {!comparisonMode && (
+                        <div className="relative">
+                            <button
+                                onClick={toggleChartOptions}
+                                className="px-3 py-1 bg-gray-800 text-white text-sm rounded hover:bg-gray-700 transition-colors flex items-center"
+                            >
+                                <span className="mr-1">{
+                                    chartType === "line" ? "Line Chart" : 
+                                    chartType === "bar" ? "Bar Chart" : 
+                                    chartType === "area" ? "Area Chart" : 
+                                    chartType === "scatter" ? "Scatter Plot" : 
+                                    "Bubble Chart"
+                                }</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                            </button>
+                            
+                            {showChartOptions && (
+                                <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded shadow-lg z-10 w-40">
+                                    <ul className="py-1">
+                                        <li>
+                                            <button 
+                                                onClick={() => selectChartType("line")}
+                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "line" ? "bg-gray-700" : ""}`}
+                                            >
+                                                Line Chart
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button 
+                                                onClick={() => selectChartType("area")}
+                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "area" ? "bg-gray-700" : ""}`}
+                                            >
+                                                Area Chart
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button 
+                                                onClick={() => selectChartType("bar")}
+                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "bar" ? "bg-gray-700" : ""}`}
+                                            >
+                                                Bar Chart
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button 
+                                                onClick={() => selectChartType("scatter")}
+                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "scatter" ? "bg-gray-700" : ""}`}
+                                            >
+                                                Scatter Plot
+                                            </button>
+                                        </li>
+                                        <li>
+                                            <button 
+                                                onClick={() => selectChartType("bubble")}
+                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "bubble" ? "bg-gray-700" : ""}`}
+                                            >
+                                                Bubble Chart
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    
+                    {comparisonMode && (
+                        <>
+                            <button
+                                onClick={cycleGridLayout}
+                                className="px-3 py-1 bg-gray-800 text-white text-sm rounded hover:bg-gray-700 transition-colors flex items-center"
+                                title="Change grid layout"
+                            >
+                                <GridIcon className="h-5 w-5" />
+                            </button>
+                            
+                            {comparisonViews.length < 4 && (
+                                <button
+                                    onClick={addComparisonView}
+                                    className="px-3 py-1 bg-gray-800 text-white text-sm rounded hover:bg-gray-700 transition-colors flex items-center"
+                                    title="Add chart"
+                                >
+                                    <PlusCircle className="h-5 w-5" />
+                                </button>
+                            )}
+                        </>
+                    )}
                 </div>
             </div>
 
-            {/* Chart container with fixed height */}
-            <div 
-                ref={chartContainerRef} 
-                className="h-[420px] w-full bg-gray-900"
-            >
-                {renderError ? (
-                    // Fallback simple chart with no curve tension if we encounter rendering errors
-                    <Chart
-                        ref={chartRef as any}
-                        type="bar"
-                        data={{
-                            labels: sanitizedData.labels.slice(
-                                visibleDataRange.startIndex,
-                                visibleDataRange.endIndex + 1
-                            ),
-                            datasets: sanitizedData.datasets.map((dataset, index) => ({
-                                label: dataset.label,
-                                data: dataset.data.slice(
+            {!comparisonMode ? (
+                // Standard single chart view
+                <div 
+                    ref={chartContainerRef} 
+                    className="h-[420px] w-full bg-gray-900"
+                >
+                    {renderError ? (
+                        // Fallback simple chart with no curve tension if we encounter rendering errors
+                        <Chart
+                            ref={chartRef as any}
+                            type="bar"
+                            data={{
+                                labels: sanitizedData.labels.slice(
                                     visibleDataRange.startIndex,
                                     visibleDataRange.endIndex + 1
                                 ),
-                                backgroundColor: getDatasetColor(index, true),
-                                borderColor: getDatasetColor(index, false),
-                                borderWidth: 1
-                            })),
-                        }}
-                        options={{
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            animation: { duration: 0 }, // No animation for better stability
-                            elements: {
-                                line: { tension: 0 }, // No tension
-                                point: { radius: 0 } // No points
-                            },
-                            scales: {
-                                y: {
-                                    beginAtZero: true,
-                                    ticks: { color: "rgba(255, 255, 255, 0.7)" },
-                                    grid: { color: "rgba(255, 255, 255, 0.1)" },
+                                datasets: sanitizedData.datasets.map((dataset, index) => ({
+                                    label: dataset.label,
+                                    data: dataset.data.slice(
+                                        visibleDataRange.startIndex,
+                                        visibleDataRange.endIndex + 1
+                                    ),
+                                    backgroundColor: getDatasetColor(index, true),
+                                    borderColor: getDatasetColor(index, false),
+                                    borderWidth: 1
+                                })),
+                            }}
+                            options={{
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                animation: { duration: 0 }, // No animation for better stability
+                                elements: {
+                                    line: { tension: 0 }, // No tension
+                                    point: { radius: 0 } // No points
                                 },
-                                x: {
-                                    ticks: { 
-                                        color: "rgba(255, 255, 255, 0.7)",
-                                        maxRotation: 0,
-                                        autoSkip: true,
-                                        maxTicksLimit: 10
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        ticks: { color: "rgba(255, 255, 255, 0.7)" },
+                                        grid: { color: "rgba(255, 255, 255, 0.1)" },
                                     },
-                                    grid: { display: false },
+                                    x: {
+                                        ticks: { 
+                                            color: "rgba(255, 255, 255, 0.7)",
+                                            maxRotation: 0,
+                                            autoSkip: true,
+                                            maxTicksLimit: 10
+                                        },
+                                        grid: { display: false },
+                                    },
                                 },
-                            },
-                        }}
-                        redraw={false}
-                        className="w-full h-full"
-                    />
-                ) : (
-                    <Chart
-                        ref={chartRef as any}
-                        type={actualChartType as any}
-                        data={chartData as any}
-                        options={{
-                            ...options,
-                            maintainAspectRatio: false,
-                        }}
-                        redraw={false}
-                        className="w-full h-full"
-                    />
-                )}
-            </div>
+                            }}
+                            redraw={false}
+                            className="w-full h-full"
+                        />
+                    ) : (
+                        <Chart
+                            ref={chartRef as any}
+                            type={actualChartType as any}
+                            data={chartData as any}
+                            options={{
+                                ...options,
+                                maintainAspectRatio: false,
+                            }}
+                            redraw={false}
+                            className="w-full h-full"
+                        />
+                    )}
+                </div>
+            ) : (
+                // Multi-chart comparison view
+                <div className={`grid gap-4 h-[700px] w-full
+                    ${gridLayout === "2x2" ? "grid-cols-1 md:grid-cols-2 grid-rows-2" : 
+                      gridLayout === "2x1" ? "grid-cols-1 grid-rows-2" :
+                      "grid-cols-1 md:grid-cols-2 grid-rows-1"}`}
+                >
+                    {comparisonViews.map((view) => (
+                        <div key={view.id} className="bg-gray-900 rounded-lg overflow-hidden flex flex-col">
+                            <div className="p-2 flex justify-between items-center bg-gray-800">
+                                <button
+                                    onClick={() => updateComparisonView(view.id, { 
+                                        chartType: view.chartType === "line" ? "bar" : 
+                                                view.chartType === "bar" ? "area" :
+                                                view.chartType === "area" ? "scatter" : "line"
+                                    })}
+                                    className="text-xs px-2 py-1 rounded bg-gray-700 text-white"
+                                >
+                                    {view.chartType.charAt(0).toUpperCase() + view.chartType.slice(1)}
+                                </button>
+                                
+                                <div className="flex space-x-1">
+                                    <button
+                                        onClick={() => toggleSettings(view.id)}
+                                        className="p-1 rounded hover:bg-gray-700"
+                                    >
+                                        <Settings className="h-4 w-4" />
+                                    </button>
+                                    
+                                    <button
+                                        onClick={() => removeComparisonView(view.id)}
+                                        className="p-1 rounded hover:bg-gray-700"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            {openSettingsId === view.id && (
+                                <div className="p-2 bg-gray-800 rounded-md mb-2">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <input
+                                            type="text"
+                                            value={view.title}
+                                            onChange={(e) => updateComparisonView(view.id, { title: e.target.value })}
+                                            className="bg-gray-700 text-white text-sm px-2 py-1 rounded w-1/2"
+                                            placeholder="Chart Title"
+                                        />
+                                        <div className="flex gap-1">
+                                            {["line", "bar", "area", "scatter"].map((type) => (
+                                                <button
+                                                    key={type}
+                                                    className={`text-xs px-2 py-1 rounded ${view.chartType === type 
+                                                        ? 'bg-blue-600 text-white' 
+                                                        : 'bg-gray-700 text-gray-300'}`}
+                                                    onClick={() => updateComparisonView(view.id, { 
+                                                        chartType: type as "line" | "bar" | "area" | "scatter" | "bubble" 
+                                                    })}
+                                                >
+                                                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                        {data.datasets.map((dataset, index) => (
+                                            <button
+                                                key={index}
+                                                className={`text-xs px-2 py-1 rounded ${view.selectedDatasets.includes(index) 
+                                                    ? 'bg-blue-600 text-white' 
+                                                    : 'bg-gray-700 text-gray-300'}`}
+                                                onClick={() => toggleDatasetInView(view.id, index)}
+                                            >
+                                                {dataset.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            <div className="flex-grow min-h-0">
+                                {renderComparisonChart(view)}
+                            </div>
+                        </div>
+                    ))}
+                    
+                    {/* Empty slot for adding a new chart */}
+                    {comparisonViews.length < 4 && (
+                        <button
+                            onClick={addComparisonView}
+                            className="border-2 border-dashed border-gray-700 rounded-lg flex items-center justify-center hover:border-gray-500 transition-colors"
+                        >
+                            <div className="text-center">
+                                <PlusCircle className="h-10 w-10 mx-auto mb-2 text-gray-500" />
+                                <span className="text-gray-500">Add Chart</span>
+                            </div>
+                        </button>
+                    )}
+                </div>
+            )}
 
+            {/* Keep zoom controls for both modes */}
             {sanitizedData.labels && sanitizedData.labels.length > 10 && (
                 <div className="mt-3">
                     <div className="flex justify-between items-center mb-1">
