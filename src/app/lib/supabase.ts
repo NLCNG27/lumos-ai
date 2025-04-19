@@ -123,6 +123,47 @@ export type Database = {
                     preview_url?: string | null;
                 };
             };
+            csv_datasets: {
+                Row: {
+                    id: string;
+                    user_id: string;
+                    name: string;
+                    description: string | null;
+                    data: Record<string, any>;
+                    size: number;
+                    row_count: number;
+                    column_count: number;
+                    created_at: string;
+                    updated_at: string;
+                    is_favorite: boolean;
+                };
+                Insert: {
+                    id?: string;
+                    user_id: string;
+                    name: string;
+                    description?: string | null;
+                    data: Record<string, any>;
+                    size: number;
+                    row_count: number;
+                    column_count: number;
+                    created_at?: string;
+                    updated_at?: string;
+                    is_favorite?: boolean;
+                };
+                Update: {
+                    id?: string;
+                    user_id?: string;
+                    name?: string;
+                    description?: string | null;
+                    data?: Record<string, any>;
+                    size?: number;
+                    row_count?: number;
+                    column_count?: number;
+                    created_at?: string;
+                    updated_at?: string;
+                    is_favorite?: boolean;
+                };
+            };
         };
     };
 };

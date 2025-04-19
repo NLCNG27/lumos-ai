@@ -1,12 +1,19 @@
 "use client";
 
 import { useState, useEffect, useMemo, Suspense } from "react";
-import { BarChart2, AlertTriangle } from "lucide-react";
+import { BarChart2, AlertTriangle, Save, Database } from "lucide-react";
 import Navbar from "@/app/components/Navbar";
 import MainMenu from "@/app/components/MainMenu";
 import dynamic from "next/dynamic";
 import CSVUploader from "@/app/components/visualizations/CSVUploader";
-import { ChartDataType, DatasetItem } from "@/app/types/visualization";
+import SavedDatasetList from "@/app/components/visualizations/SavedDatasetList";
+import SaveDatasetModal from "@/app/components/visualizations/SaveDatasetModal";
+import {
+    ChartDataType,
+    DatasetItem,
+    SavedDataset,
+} from "@/app/types/visualization";
+import { useAuth } from "@clerk/nextjs";
 
 // Dynamically import the DataVisualizer component to reduce initial load time
 const DataVisualizer = dynamic(
@@ -53,6 +60,14 @@ export default function VisualizationsPage() {
     const [renderStartTime, setRenderStartTime] = useState<number | null>(null);
     const [renderDuration, setRenderDuration] = useState<number | null>(null);
 
+    // New state for dataset saving/loading
+    const [showSaveModal, setShowSaveModal] = useState(false);
+    const [showDatasetSidebar, setShowDatasetSidebar] = useState(false);
+    const [activeSavedDataset, setActiveSavedDataset] =
+        useState<SavedDataset | null>(null);
+
+    const { isSignedIn } = useAuth();
+
     // Track performance metrics
     useEffect(() => {
         if (data && !isLoading) {
@@ -68,16 +83,17 @@ export default function VisualizationsPage() {
     }, [data, isLoading]);
 
     useEffect(() => {
-        if (!isUsingCustomData) {
+        if (!isUsingCustomData && !activeSavedDataset) {
             fetchSampleData();
         }
-    }, [isUsingCustomData]);
+    }, [isUsingCustomData, activeSavedDataset]);
 
     const fetchSampleData = async () => {
         try {
             setIsLoading(true);
             setError(null);
             setRenderDuration(null);
+            setActiveSavedDataset(null);
 
             const response = await fetch("/api/csv");
 
@@ -117,6 +133,7 @@ export default function VisualizationsPage() {
         setIsLoading(true);
         setError(null);
         setRenderDuration(null);
+        setActiveSavedDataset(null);
     };
 
     const handleDataLoaded = (uploadedData: ChartDataType) => {
@@ -135,6 +152,48 @@ export default function VisualizationsPage() {
 
     const handleResetToSample = () => {
         setIsUsingCustomData(false);
+        setActiveSavedDataset(null);
+    };
+
+    // New handlers for dataset operations
+    const handleToggleDatasetSidebar = () => {
+        setShowDatasetSidebar(!showDatasetSidebar);
+    };
+
+    const handleSaveDataset = () => {
+        if (!data) return;
+        setShowSaveModal(true);
+    };
+
+    const handleSaveSuccess = () => {
+        setShowSaveModal(false);
+        // Update the sidebar if it's open
+        if (showDatasetSidebar) {
+            // The datasets will refresh automatically due to the component's useEffect
+        }
+    };
+
+    const handleSelectDataset = (dataset: SavedDataset) => {
+        setIsLoading(true);
+        setError(null);
+        setRenderDuration(null);
+        setIsUsingCustomData(false);
+
+        try {
+            // Process the dataset
+            const loadedData = dataset.data;
+            setData(loadedData);
+            setFilename(dataset.name);
+            setActiveSavedDataset(dataset);
+
+            // Calculate metrics
+            calculateDataMetrics(loadedData);
+        } catch (err) {
+            console.error("Error loading dataset:", err);
+            setError("Failed to load the selected dataset");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const renderStats = (datasetIndex: number, colorClass: string) => {
@@ -221,7 +280,7 @@ export default function VisualizationsPage() {
             <MainMenu />
 
             <div className="ml-16 pt-16 p-6">
-                <div className="max-w-6xl mx-auto">
+                <div className="max-w-7xl mx-auto">
                     <div className="flex justify-between items-center mb-6">
                         <div>
                             <h1 className="text-3xl font-bold">
@@ -234,75 +293,131 @@ export default function VisualizationsPage() {
                             )}
                         </div>
 
-                        {isUsingCustomData && (
-                            <button
-                                onClick={handleResetToSample}
-                                className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition-colors"
-                            >
-                                Use Sample Data
-                            </button>
-                        )}
+                        <div className="flex space-x-2">
+                            {isSignedIn && (
+                                <button
+                                    onClick={handleToggleDatasetSidebar}
+                                    className={`flex items-center px-3 py-2 rounded-lg transition-colors ${
+                                        showDatasetSidebar
+                                            ? "bg-blue-600 text-white"
+                                            : "bg-gray-800 text-white hover:bg-gray-700"
+                                    }`}
+                                >
+                                    <Database className="mr-1.5 h-4 w-4" />
+                                    Saved Datasets
+                                </button>
+                            )}
+
+                            {(isUsingCustomData || activeSavedDataset) && (
+                                <button
+                                    onClick={handleResetToSample}
+                                    className="bg-gray-800 hover:bg-gray-700 text-white py-2 px-4 rounded-lg transition-colors"
+                                >
+                                    Use Sample Data
+                                </button>
+                            )}
+
+                            {isSignedIn && data && !isLoading && (
+                                <button
+                                    onClick={handleSaveDataset}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition-colors flex items-center"
+                                >
+                                    <Save className="mr-1.5 h-4 w-4" />
+                                    Save Dataset
+                                </button>
+                            )}
+                        </div>
                     </div>
 
-                    {!isUsingCustomData && !isLoading && !error && (
-                        <div className="mb-6">
-                            <CSVUploader
-                                onDataLoaded={handleDataLoaded}
-                                onUploadStart={handleFileUploadStart}
-                                onUploadError={handleUploadError}
-                            />
-                        </div>
-                    )}
-
-                    {isLoading ? (
-                        <div className="flex justify-center items-center h-64">
-                            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-                        </div>
-                    ) : error ? (
-                        <div className="bg-red-900/30 border border-red-800 p-4 rounded-lg text-red-200 mb-6">
-                            <div className="flex gap-2 items-start">
-                                <AlertTriangle className="h-5 w-5 text-red-300 mt-0.5" />
-                                <div>
-                                    <h3 className="font-medium mb-1">Error</h3>
-                                    <p>{error}</p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={fetchSampleData}
-                                className="block mt-3 bg-red-800 hover:bg-red-700 text-white py-1 px-3 rounded-lg text-sm transition-colors"
-                            >
-                                Retry with Sample Data
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="mb-10">
-                            <div className="bg-gray-900 rounded-lg border border-gray-800 p-4 mb-4">
-                                <Suspense
-                                    fallback={<div>Loading chart...</div>}
-                                >
-                                    <DataVisualizer data={data} />
-                                </Suspense>
-                            </div>
-
-                            {data &&
-                                data.datasets.length > 0 &&
-                                data.labels.length > 1000 && (
-                                    <div className="mt-2 p-2 bg-amber-900/20 border border-amber-800/30 rounded-md flex gap-2 items-center mb-8">
-                                        <BarChart2 className="h-5 w-5 text-amber-400" />
-                                        <p className="text-amber-200 text-sm">
-                                            This chart is using data
-                                            downsampling for better
-                                            performance (
-                                            {data.labels.length} points).
-                                        </p>
+                    <div className="flex flex-col md:flex-row gap-6">
+                        {/* Main content area */}
+                        <div
+                            className={`flex-1 ${
+                                showDatasetSidebar ? "md:w-2/3" : "w-full"
+                            }`}
+                        >
+                            {!activeSavedDataset &&
+                                !isUsingCustomData &&
+                                !isLoading &&
+                                !error && (
+                                    <div className="mb-6">
+                                        <CSVUploader
+                                            onDataLoaded={handleDataLoaded}
+                                            onUploadStart={
+                                                handleFileUploadStart
+                                            }
+                                            onUploadError={handleUploadError}
+                                        />
                                     </div>
                                 )}
 
-                            {analysisPane}
+                            {error && (
+                                <div className="bg-red-900/30 border border-red-800 rounded-lg p-4 mb-6 flex items-start">
+                                    <AlertTriangle className="text-red-500 mr-3 h-5 w-5 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                        <h3 className="font-medium text-red-400">
+                                            Error
+                                        </h3>
+                                        <p className="text-red-300 mt-1">
+                                            {error}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!error && data && !isLoading && (
+                                <div className="space-y-6">
+                                    <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
+                                        <div className="p-3 border-b border-gray-800">
+                                            <h2 className="font-medium flex items-center">
+                                                <BarChart2 className="mr-2 h-5 w-5 text-blue-500" />
+                                                {activeSavedDataset
+                                                    ? activeSavedDataset.name
+                                                    : filename
+                                                    ? `CSV: ${filename}`
+                                                    : "Chart Visualization"}
+                                            </h2>
+                                        </div>
+                                        <div className="p-4">
+                                            <DataVisualizer data={data} />
+                                        </div>
+                                    </div>
+
+                                    {analysisPane}
+
+                                    {renderDuration !== null && (
+                                        <div className="text-xs text-gray-500 text-right">
+                                            Chart rendered in{" "}
+                                            {renderDuration.toFixed(2)}ms
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
-                    )}
+
+                        {/* Saved datasets sidebar */}
+                        {showDatasetSidebar && (
+                            <div className="md:w-1/3 flex-shrink-0 md:max-w-sm">
+                                <SavedDatasetList
+                                    onSelectDataset={handleSelectDataset}
+                                    onSaveCurrentDataset={handleSaveDataset}
+                                    hasCurrentDataset={!!data && !isLoading}
+                                />
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
+
+            {/* Save Dataset Modal */}
+            {showSaveModal && data && (
+                <SaveDatasetModal
+                    data={data}
+                    onClose={() => setShowSaveModal(false)}
+                    onSuccess={handleSaveSuccess}
+                    filename={filename}
+                />
+            )}
         </div>
     );
 }
