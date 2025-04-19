@@ -152,11 +152,20 @@ export default function DataVisualizer({
     // Error handling for chart rendering
     useEffect(() => {
         const handleError = (event: ErrorEvent) => {
-            // Check if the error is related to Chart.js
+            // In production, error messages are often minified, so we need to check for both full and minified versions
             if (event.message && (
+                // Full error messages (development)
                 event.message.includes('Cannot set properties of undefined (setting \'cp1x\')') ||
                 event.message.includes('Chart.js') ||
-                event.message.includes('updateControlPoints')
+                event.message.includes('updateControlPoints') ||
+                // Minified error patterns (production)
+                event.message.includes('cp1x') ||
+                event.message.includes('undefined') ||
+                (event.error && event.error.stack && (
+                    event.error.stack.includes('Chart') ||
+                    event.error.stack.includes('draw') ||
+                    event.error.stack.includes('render')
+                ))
             )) {
                 console.error('Chart rendering error detected:', event.message);
                 setRenderError(true);
@@ -282,8 +291,8 @@ export default function DataVisualizer({
                 backgroundColor: getDatasetColor(index, true),
                 borderColor: getDatasetColor(index, false),
                 borderWidth: chartType === "line" || chartType === "area" ? 2 : 0,
-                // Only apply tension when there are enough points and for line/area charts
-                tension: (chartType === "line" || chartType === "area") && visibleLabels.length > 2 ? 0.4 : 0,
+                // Completely disable tension to prevent rendering errors
+                tension: 0,
                 fill: chartType === "area" ? true : false,
                 // Performance optimization - only draw points if there are few data points
                 pointRadius: visibleLabels.length > 100 ? 0 : 3,
@@ -294,9 +303,15 @@ export default function DataVisualizer({
 
     // Determine the actual chart type to pass to Chart.js
     const actualChartType = useMemo(() => {
+        const tooFewPointsForCurves = sanitizedData.labels.length <= 3;
+        
         switch (chartType) {
+            case "line":
+                // If too few points, use bar chart to avoid curve rendering issues
+                return tooFewPointsForCurves ? "bar" : "line";
             case "area":
-                return "line"; // Area chart is a line chart with fill=true
+                // Area is just a filled line chart
+                return tooFewPointsForCurves ? "bar" : "line";
             case "scatter":
                 return "scatter";
             case "bubble":
@@ -304,7 +319,7 @@ export default function DataVisualizer({
             default:
                 return chartType;
         }
-    }, [chartType]);
+    }, [chartType, sanitizedData.labels.length]);
 
     // Memoize chart options to prevent unnecessary re-renders
     const options: ChartOptions<"line" | "bar"> = useMemo(
@@ -376,7 +391,8 @@ export default function DataVisualizer({
             elements: {
                 line: {
                     borderWidth: sanitizedData.labels.length > 1000 ? 1 : 2, // Thinner lines for large datasets
-                    tension: sanitizedData.labels.length <= 2 ? 0 : undefined, // Prevent tension calculation for very small datasets
+                    tension: 0, // Force straight lines with no tension for all line charts
+                    capBezierPoints: false, // Don't try to cap bezier curve points 
                 },
                 point: {
                     // Hide points completely for extremely large datasets to improve performance
