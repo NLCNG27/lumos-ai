@@ -23,7 +23,7 @@ const parseCSV = async (csvContent: string) => {
     }
 
     // Limit number of columns to prevent memory issues
-    const headers = allHeaders.slice(0, MAX_COLUMNS);
+    const headers = allHeaders.slice(0, MAX_COLUMNS); 
 
     // Pre-allocate array for better memory efficiency
     const data = new Array(rowLimit - 1);
