@@ -297,33 +297,34 @@ export default function VisualizationsPage() {
                             {isSignedIn && (
                                 <button
                                     onClick={handleToggleDatasetSidebar}
-                                    className={`flex items-center px-3 py-2 rounded-lg transition-colors ${
+                                    className={`flex items-center justify-center p-2 rounded-lg transition-colors ${
                                         showDatasetSidebar
                                             ? "bg-blue-600 text-white"
                                             : "bg-gray-800 text-white hover:bg-gray-700"
                                     }`}
+                                    title="Saved Datasets"
                                 >
-                                    <Database className="mr-1.5 h-4 w-4" />
-                                    Saved Datasets
+                                    <Database className="h-5 w-5" />
                                 </button>
                             )}
 
                             {(isUsingCustomData || activeSavedDataset) && (
                                 <button
                                     onClick={handleResetToSample}
-                                    className="bg-gray-800 hover:bg-gray-700 text-white py-2 px-4 rounded-lg transition-colors"
+                                    className="bg-gray-800 hover:bg-gray-700 text-white p-2 rounded-lg transition-colors"
+                                    title="Use Sample Data"
                                 >
-                                    Use Sample Data
+                                    <BarChart2 className="h-5 w-5" />
                                 </button>
                             )}
 
                             {isSignedIn && data && !isLoading && (
                                 <button
                                     onClick={handleSaveDataset}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg transition-colors flex items-center"
+                                    className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors flex items-center justify-center"
+                                    title="Save Dataset"
                                 >
-                                    <Save className="mr-1.5 h-4 w-4" />
-                                    Save Dataset
+                                    <Save className="h-5 w-5" />
                                 </button>
                             )}
                         </div>
