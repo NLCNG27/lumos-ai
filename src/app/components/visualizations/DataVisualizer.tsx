@@ -18,6 +18,8 @@ import {
     RadialLinearScale,
     BubbleController,
     ScatterController,
+    LineController,
+    BarController,
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 import { ChartDataType } from "@/app/types/visualization";
@@ -33,6 +35,8 @@ ChartJS.register(
     RadialLinearScale,
     BubbleController,
     ScatterController,
+    LineController,
+    BarController,
     Title,
     Tooltip,
     Legend,
@@ -542,8 +546,8 @@ export default function DataVisualizer({
             >
                 <Chart
                     ref={chartRef as any}
-                    type={actualChartType as "bar" | "line"}
-                    data={chartData as ChartData<"bar" | "line", { x: number; y: number; }[], string>}
+                    type={actualChartType as any}
+                    data={chartData as any}
                     options={{
                         ...options,
                         maintainAspectRatio: false,
