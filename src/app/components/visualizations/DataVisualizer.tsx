@@ -138,6 +138,7 @@ export default function DataVisualizer({
     const [zoomRange, setZoomRange] = useState<[number, number]>([0, 100]); // [start, end] percentages
     const [copyStatus, setCopyStatus] = useState<string | null>(null);
     const [showChartOptions, setShowChartOptions] = useState(false);
+    const [renderError, setRenderError] = useState(false);
 
     // Reset chart on unmount to prevent memory leaks
     useEffect(() => {
@@ -147,6 +148,37 @@ export default function DataVisualizer({
             }
         };
     }, []);
+
+    // Error handling for chart rendering
+    useEffect(() => {
+        const handleError = (event: ErrorEvent) => {
+            // Check if the error is related to Chart.js
+            if (event.message && (
+                event.message.includes('Cannot set properties of undefined (setting \'cp1x\')') ||
+                event.message.includes('Chart.js') ||
+                event.message.includes('updateControlPoints')
+            )) {
+                console.error('Chart rendering error detected:', event.message);
+                setRenderError(true);
+                // Prevent the error from bubbling up
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        };
+
+        // Add global error handler
+        window.addEventListener('error', handleError);
+
+        // Cleanup
+        return () => {
+            window.removeEventListener('error', handleError);
+        };
+    }, []);
+
+    // Reset error state when data or chart type changes
+    useEffect(() => {
+        setRenderError(false);
+    }, [chartType, data]);
 
     if (!data) {
         return <div>No data available</div>;
@@ -250,7 +282,8 @@ export default function DataVisualizer({
                 backgroundColor: getDatasetColor(index, true),
                 borderColor: getDatasetColor(index, false),
                 borderWidth: chartType === "line" || chartType === "area" ? 2 : 0,
-                tension: 0.4,
+                // Only apply tension when there are enough points and for line/area charts
+                tension: (chartType === "line" || chartType === "area") && visibleLabels.length > 2 ? 0.4 : 0,
                 fill: chartType === "area" ? true : false,
                 // Performance optimization - only draw points if there are few data points
                 pointRadius: visibleLabels.length > 100 ? 0 : 3,
@@ -343,6 +376,7 @@ export default function DataVisualizer({
             elements: {
                 line: {
                     borderWidth: sanitizedData.labels.length > 1000 ? 1 : 2, // Thinner lines for large datasets
+                    tension: sanitizedData.labels.length <= 2 ? 0 : undefined, // Prevent tension calculation for very small datasets
                 },
                 point: {
                     // Hide points completely for extremely large datasets to improve performance
@@ -544,17 +578,68 @@ export default function DataVisualizer({
                 ref={chartContainerRef} 
                 className="h-[420px] w-full bg-gray-900"
             >
-                <Chart
-                    ref={chartRef as any}
-                    type={actualChartType as any}
-                    data={chartData as any}
-                    options={{
-                        ...options,
-                        maintainAspectRatio: false,
-                    }}
-                    redraw={false}
-                    className="w-full h-full"
-                />
+                {renderError ? (
+                    // Fallback simple chart with no curve tension if we encounter rendering errors
+                    <Chart
+                        ref={chartRef as any}
+                        type="bar"
+                        data={{
+                            labels: sanitizedData.labels.slice(
+                                visibleDataRange.startIndex,
+                                visibleDataRange.endIndex + 1
+                            ),
+                            datasets: sanitizedData.datasets.map((dataset, index) => ({
+                                label: dataset.label,
+                                data: dataset.data.slice(
+                                    visibleDataRange.startIndex,
+                                    visibleDataRange.endIndex + 1
+                                ),
+                                backgroundColor: getDatasetColor(index, true),
+                                borderColor: getDatasetColor(index, false),
+                                borderWidth: 1
+                            })),
+                        }}
+                        options={{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: { duration: 0 }, // No animation for better stability
+                            elements: {
+                                line: { tension: 0 }, // No tension
+                                point: { radius: 0 } // No points
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: { color: "rgba(255, 255, 255, 0.7)" },
+                                    grid: { color: "rgba(255, 255, 255, 0.1)" },
+                                },
+                                x: {
+                                    ticks: { 
+                                        color: "rgba(255, 255, 255, 0.7)",
+                                        maxRotation: 0,
+                                        autoSkip: true,
+                                        maxTicksLimit: 10
+                                    },
+                                    grid: { display: false },
+                                },
+                            },
+                        }}
+                        redraw={false}
+                        className="w-full h-full"
+                    />
+                ) : (
+                    <Chart
+                        ref={chartRef as any}
+                        type={actualChartType as any}
+                        data={chartData as any}
+                        options={{
+                            ...options,
+                            maintainAspectRatio: false,
+                        }}
+                        redraw={false}
+                        className="w-full h-full"
+                    />
+                )}
             </div>
 
             {sanitizedData.labels && sanitizedData.labels.length > 10 && (
