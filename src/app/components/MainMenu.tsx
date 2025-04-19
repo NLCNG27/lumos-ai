@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Home, Code, Newspaper } from "lucide-react";
+import { Home, Code, Newspaper, BarChart } from "lucide-react";
 import { SignedIn } from "@clerk/nextjs";
 import { usePathname } from "next/navigation";
 import { Tooltip } from "@/app/components/ui/Tooltip";
@@ -14,6 +14,8 @@ export default function MainMenu() {
         if (path === "/chalkboard" && pathname.startsWith("/chalkboard"))
             return true;
         if (path === "/news" && pathname.startsWith("/news")) return true;
+        if (path === "/visualizations" && pathname.startsWith("/visualizations")) 
+            return true;
         return false;
     };
 
@@ -57,6 +59,19 @@ export default function MainMenu() {
                             }`}
                         >
                             <Newspaper className="h-6 w-6" />
+                        </Link>
+                    </Tooltip>
+                    
+                    <Tooltip content="Visualizations" side="right">
+                        <Link
+                            href="/visualizations"
+                            className={`p-3 rounded-lg transition-colors hover:bg-gray-800 ${
+                                isActive("/visualizations")
+                                    ? "bg-blue-900/50 text-blue-400"
+                                    : "text-gray-400"
+                            }`}
+                        >
+                            <BarChart className="h-6 w-6" />
                         </Link>
                     </Tooltip>
                 </div>
