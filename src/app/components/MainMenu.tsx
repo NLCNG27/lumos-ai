@@ -49,7 +49,7 @@ export default function MainMenu() {
                         </Link>
                     </Tooltip>
 
-                    <Tooltip content="Hacker News" side="right">
+                    <Tooltip content="News" side="right">
                         <Link
                             href="/news"
                             className={`p-3 rounded-lg transition-colors hover:bg-gray-800 ${
