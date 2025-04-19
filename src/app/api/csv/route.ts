@@ -41,7 +41,7 @@ const parseCSV = async (csvContent: string) => {
       const values = lines[i].split(',').map(value => value.trim()).slice(0, headers.length);
       
       if (values.length === headers.length) {
-        const row = {};
+        const row: Record<string, string | number> = {};
         headers.forEach((header, index) => {
           // Try to convert to number if possible, using faster conversion method
           const value = values[index];
