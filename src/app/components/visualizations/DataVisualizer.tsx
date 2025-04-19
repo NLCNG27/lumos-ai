@@ -699,10 +699,9 @@ export default function DataVisualizer({
                         className={`px-3 py-1 text-white text-sm rounded hover:bg-gray-700 transition-colors flex items-center ${
                             comparisonMode ? 'bg-blue-600' : 'bg-gray-800'
                         }`}
-                        title="Toggle comparison mode"
+                        title="Compare"
                     >
-                        <Grid2X2 className="h-5 w-5 mr-1" />
-                        Compare
+                        <Grid2X2 className="h-5 w-5" />
                     </button>
                     
                     {!comparisonMode && (
