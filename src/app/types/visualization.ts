@@ -5,6 +5,17 @@ export type ChartDataType = {
         label: string;
         data: number[];
     }[];
+    // Metadata for filtering and column information
+    metadata?: {
+        columnTypes: Record<string, 'numeric' | 'categorical' | 'date' | 'text'>;
+        filterOptions?: Record<string, string[]>; // Available filter values for each categorical field
+        // Track which fields/columns are categorical and should only be used for filtering
+        categoricalFields?: string[];
+        // Track which fields are numeric and should be plotted in charts
+        numericFields?: string[];
+        // Original column names from the raw data (before processing)
+        originalColumns?: string[];
+    };
 };
 
 // Define dataset item type
@@ -19,6 +30,7 @@ export type ComparisonView = {
     chartType: "line" | "bar" | "area" | "scatter" | "bubble";
     title: string;
     selectedDatasets: number[]; // Indices of selected datasets
+    activeFilters?: Record<string, string[]>; // Filters applied to this specific view
 };
 
 // Define saved dataset type for database

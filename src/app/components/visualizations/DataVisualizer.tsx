@@ -24,7 +24,18 @@ import {
 } from "chart.js";
 import { Chart } from "react-chartjs-2";
 import { ChartDataType, ComparisonView } from "@/app/types/visualization";
-import { X, PlusCircle, Copy, Settings, Grid2X2, GridIcon, RefreshCw } from "lucide-react";
+import {
+    X,
+    PlusCircle,
+    Copy,
+    Settings,
+    Grid2X2,
+    GridIcon,
+    RefreshCw,
+    Filter,
+    ChevronDown,
+    ChevronUp,
+} from "lucide-react";
 
 // Register Chart.js components including Decimation for large datasets
 ChartJS.register(
@@ -131,15 +142,101 @@ const downsampleLabels = (
 };
 
 // Function to create a new comparison view with deterministic IDs
-const createDefaultView = (chartType: "line" | "bar" | "area" | "scatter" | "bubble", index: number, allDatasets: any[]): ComparisonView => {
+const createDefaultView = (
+    chartType: "line" | "bar" | "area" | "scatter" | "bubble",
+    index: number,
+    allDatasets: any[]
+): ComparisonView => {
     return {
         id: `chart-view-${chartType}-${Date.now()}-${index}`, // Add timestamp to ensure uniqueness
         chartType,
-        title: `${chartType.charAt(0).toUpperCase() + chartType.slice(1)} Chart`,
-        selectedDatasets: allDatasets.length <= 2 
-            ? allDatasets.map((_, i) => i) // Select all datasets if 2 or fewer
-            : [0] // Select only the first dataset if more than 2
+        title: `${
+            chartType.charAt(0).toUpperCase() + chartType.slice(1)
+        } Chart`,
+        selectedDatasets:
+            allDatasets.length <= 2
+                ? allDatasets.map((_, i) => i) // Select all datasets if 2 or fewer
+                : [0], // Select only the first dataset if more than 2
     };
+};
+
+// Function to extract filtering information from data
+// This should be called when data is first loaded to analyze and separate categorical fields
+const analyzeCategoricalFields = (
+    data: ChartDataType
+): Record<string, string[]> => {
+    const filterOptions: Record<string, string[]> = {};
+
+    // If data already has metadata with categoricalFields specified, use that
+    if (data.metadata?.categoricalFields && data.metadata.filterOptions) {
+        return data.metadata.filterOptions;
+    }
+
+    // Otherwise, try to identify categorical fields from the data structure
+
+    // 1. Check if labels might be categorical (non-numeric or date-like)
+    const uniqueLabels = new Set(data.labels);
+    let nonNumericCount = 0;
+    let dateFormatCount = 0;
+
+    // Check if labels array might contain categories rather than numeric or date values
+    for (const label of data.labels) {
+        if (isNaN(Number(label)) || label === "") {
+            nonNumericCount++;
+        }
+
+        // Simple check for date-like formats (this is simplified, can be expanded)
+        if (/^\d{4}-\d{2}-\d{2}|^\d{2}\/\d{2}\/\d{4}/.test(label)) {
+            dateFormatCount++;
+        }
+    }
+
+    // If labels are not dates and have many non-numeric values, they could be categories
+    const labelsAreCategorical =
+        nonNumericCount > 0 && dateFormatCount < data.labels.length * 0.8;
+
+    if (
+        labelsAreCategorical &&
+        uniqueLabels.size < Math.min(30, data.labels.length * 0.3)
+    ) {
+        filterOptions["label"] = Array.from(uniqueLabels);
+    }
+
+    // 2. Check each dataset for potential categorical data (text values or low cardinality numbers)
+    const potentialCategoricalDatasets: Record<string, Set<string>> = {};
+
+    data.datasets.forEach((dataset) => {
+        // Skip datasets with all NaN values
+        if (dataset.data.every((d) => isNaN(d))) return;
+
+        // Convert numbers to strings for analysis
+        const stringValues = dataset.data.map((val) => String(val));
+        const uniqueValues = new Set(stringValues);
+
+        // Check if values are actually categoricals encoded as numbers
+        // Criteria:
+        // - Few unique values compared to total length
+        // - OR values are all integers and within a small range (like 1-5 for ratings)
+        const hasLowCardinality =
+            uniqueValues.size <= Math.min(10, dataset.data.length * 0.1);
+        const isIntegerRange =
+            dataset.data.every(Number.isInteger) &&
+            Math.max(...dataset.data) - Math.min(...dataset.data) < 10 &&
+            uniqueValues.size < 20;
+
+        if (hasLowCardinality || isIntegerRange) {
+            potentialCategoricalDatasets[dataset.label] = uniqueValues;
+        }
+    });
+
+    // Add potential categorical datasets to filterOptions
+    Object.entries(potentialCategoricalDatasets).forEach(
+        ([datasetName, values]) => {
+            filterOptions[datasetName] = Array.from(values);
+        }
+    );
+
+    return filterOptions;
 };
 
 export default function DataVisualizer({
@@ -149,28 +246,223 @@ export default function DataVisualizer({
 }) {
     const chartRef = useRef<ChartJS>(null);
     const chartContainerRef = useRef<HTMLDivElement>(null);
-    const [chartType, setChartType] = useState<"line" | "bar" | "area" | "scatter" | "bubble">("line");
+    const [chartType, setChartType] = useState<
+        "line" | "bar" | "area" | "scatter" | "bubble"
+    >("line");
     const [zoomRange, setZoomRange] = useState<[number, number]>([0, 100]); // [start, end] percentages
     const [copyStatus, setCopyStatus] = useState<string | null>(null);
     const [showChartOptions, setShowChartOptions] = useState(false);
     const [renderError, setRenderError] = useState(false);
-    
+
+    // Filter-related state
+    const [showFilters, setShowFilters] = useState(false);
+    const [activeFilters, setActiveFilters] = useState<
+        Record<string, string[]>
+    >({});
+    const [availableFilters, setAvailableFilters] = useState<
+        Record<string, string[]>
+    >({});
+
+    // Track categorical fields that should only be used as filters, not displayed
+    const [categoricalFields, setCategoricalFields] = useState<string[]>([]);
+    // Track numeric fields that should be displayed in charts
+    const [numericFields, setNumericFields] = useState<string[]>([]);
+
     // Multi-chart comparison mode
     const [comparisonMode, setComparisonMode] = useState(false);
-    const [comparisonViews, setComparisonViews] = useState<ComparisonView[]>([]);
+    const [comparisonViews, setComparisonViews] = useState<ComparisonView[]>(
+        []
+    );
     const [gridLayout, setGridLayout] = useState<"2x2" | "2x1" | "1x2">("2x2");
     const [openSettingsId, setOpenSettingsId] = useState<string | null>(null);
-    
+
+    // Extract non-numeric fields and possible filter values when data changes
+    useEffect(() => {
+        if (!data || !data.labels) return;
+
+        // If metadata is already provided, use it directly
+        if (data.metadata?.filterOptions) {
+            setAvailableFilters(data.metadata.filterOptions);
+
+            // Set categorical and numeric fields from metadata if available
+            if (data.metadata.categoricalFields) {
+                setCategoricalFields(data.metadata.categoricalFields);
+            }
+            if (data.metadata.numericFields) {
+                setNumericFields(data.metadata.numericFields);
+            }
+            return;
+        }
+
+        // Otherwise, try to auto-detect categorical fields
+        try {
+            const detectedFilters = analyzeCategoricalFields(data);
+            setAvailableFilters(detectedFilters);
+
+            // Set categorical fields based on detected filters
+            setCategoricalFields(Object.keys(detectedFilters));
+
+            // Set numeric fields as those dataset labels that aren't categorical
+            const detectedNumericFields = data.datasets
+                .map((ds) => ds.label)
+                .filter((label) => !detectedFilters[label]);
+
+            setNumericFields(detectedNumericFields);
+        } catch (error) {
+            console.error("Error detecting categorical fields:", error);
+        }
+    }, [data]);
+
+    // Filter out categorical datasets from the displayed data
+    const displayableData = useMemo(() => {
+        if (!data) return null;
+
+        // If we don't have any categorical fields identified, just return the original data
+        if (categoricalFields.length === 0) return data;
+
+        // Create a new data object with only numeric datasets
+        return {
+            ...data,
+            datasets: data.datasets.filter(
+                (ds) =>
+                    // Include only datasets that are not in the categoricalFields list
+                    !categoricalFields.includes(ds.label)
+            ),
+        };
+    }, [data, categoricalFields]);
+
+    // Apply filters to the data
+    const filteredData = useMemo(() => {
+        if (!displayableData || Object.keys(activeFilters).length === 0) {
+            return displayableData;
+        }
+
+        try {
+            // Start with the filtered displayable data
+            const filteredLabels: string[] = [];
+            const filteredDatasets = displayableData.datasets.map((ds) => ({
+                ...ds,
+                data: [] as number[],
+            }));
+
+            // Determine which indices to keep based on filters
+            const labelFilters = activeFilters["label"] || [];
+
+            displayableData.labels.forEach((label, index) => {
+                // Check if this index should be included based on filters
+                let shouldInclude = true;
+
+                // Apply label filters
+                if (labelFilters.length > 0 && !labelFilters.includes(label)) {
+                    shouldInclude = false;
+                }
+
+                // Apply dataset-specific filters
+                for (const [datasetName, filterValues] of Object.entries(
+                    activeFilters
+                )) {
+                    if (datasetName === "label") continue; // Already handled above
+
+                    // For categorical fields that are used as filters but not displayed
+                    if (categoricalFields.includes(datasetName)) {
+                        // Find the original dataset with this name from the full data object
+                        const originalDataIndex = data?.datasets.findIndex(
+                            (ds) => ds.label === datasetName
+                        );
+                        if (
+                            originalDataIndex !== -1 &&
+                            data &&
+                            originalDataIndex !== undefined
+                        ) {
+                            const value = String(
+                                data.datasets[originalDataIndex].data[index]
+                            );
+                            if (
+                                filterValues.length > 0 &&
+                                !filterValues.includes(value)
+                            ) {
+                                shouldInclude = false;
+                                break;
+                            }
+                        }
+                    } else {
+                        // For regular datasets that are displayed in the chart
+                        const datasetIndex = displayableData.datasets.findIndex(
+                            (ds) => ds.label === datasetName
+                        );
+                        if (datasetIndex !== -1) {
+                            const value = String(
+                                displayableData.datasets[datasetIndex].data[
+                                    index
+                                ]
+                            );
+                            if (
+                                filterValues.length > 0 &&
+                                !filterValues.includes(value)
+                            ) {
+                                shouldInclude = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (shouldInclude) {
+                    filteredLabels.push(label);
+                    // Add corresponding data points for each dataset
+                    displayableData.datasets.forEach((ds, dsIndex) => {
+                        filteredDatasets[dsIndex].data.push(ds.data[index]);
+                    });
+                }
+            });
+
+            return {
+                ...displayableData,
+                labels: filteredLabels,
+                datasets: filteredDatasets,
+            };
+        } catch (error) {
+            console.error("Error applying filters:", error);
+            return displayableData;
+        }
+    }, [displayableData, activeFilters, categoricalFields, data]);
+
+    // Toggle a filter value
+    const toggleFilter = (field: string, value: string) => {
+        setActiveFilters((prev) => {
+            const current = prev[field] || [];
+            const newFilters = { ...prev };
+
+            if (current.includes(value)) {
+                // Remove the filter
+                newFilters[field] = current.filter((v) => v !== value);
+                if (newFilters[field].length === 0) {
+                    delete newFilters[field];
+                }
+            } else {
+                // Add the filter
+                newFilters[field] = [...current, value];
+            }
+
+            return newFilters;
+        });
+    };
+
+    // Clear all filters
+    const clearFilters = () => {
+        setActiveFilters({});
+    };
+
     // Initialize comparison views when data changes or when entering comparison mode
     useEffect(() => {
-        if (data && comparisonMode && comparisonViews.length === 0) {
+        if (filteredData && comparisonMode && comparisonViews.length === 0) {
             // Create two default views for comparison
             setComparisonViews([
-                createDefaultView("line", 0, data.datasets),
-                createDefaultView("bar", 1, data.datasets)
+                createDefaultView("line", 0, filteredData.datasets),
+                createDefaultView("bar", 1, filteredData.datasets),
             ]);
         }
-    }, [data, comparisonMode, comparisonViews.length]);
+    }, [filteredData, comparisonMode, comparisonViews.length]);
 
     // Reset chart on unmount to prevent memory leaks
     useEffect(() => {
@@ -185,21 +477,24 @@ export default function DataVisualizer({
     useEffect(() => {
         const handleError = (event: ErrorEvent) => {
             // In production, error messages are often minified, so we need to check for both full and minified versions
-            if (event.message && (
+            if (
+                event.message &&
                 // Full error messages (development)
-                event.message.includes('Cannot set properties of undefined (setting \'cp1x\')') ||
-                event.message.includes('Chart.js') ||
-                event.message.includes('updateControlPoints') ||
-                // Minified error patterns (production)
-                event.message.includes('cp1x') ||
-                event.message.includes('undefined') ||
-                (event.error && event.error.stack && (
-                    event.error.stack.includes('Chart') ||
-                    event.error.stack.includes('draw') ||
-                    event.error.stack.includes('render')
-                ))
-            )) {
-                console.error('Chart rendering error detected:', event.message);
+                (event.message.includes(
+                    "Cannot set properties of undefined (setting 'cp1x')"
+                ) ||
+                    event.message.includes("Chart.js") ||
+                    event.message.includes("updateControlPoints") ||
+                    // Minified error patterns (production)
+                    event.message.includes("cp1x") ||
+                    event.message.includes("undefined") ||
+                    (event.error &&
+                        event.error.stack &&
+                        (event.error.stack.includes("Chart") ||
+                            event.error.stack.includes("draw") ||
+                            event.error.stack.includes("render"))))
+            ) {
+                console.error("Chart rendering error detected:", event.message);
                 setRenderError(true);
                 // Prevent the error from bubbling up
                 event.preventDefault();
@@ -208,20 +503,20 @@ export default function DataVisualizer({
         };
 
         // Add global error handler
-        window.addEventListener('error', handleError);
+        window.addEventListener("error", handleError);
 
         // Cleanup
         return () => {
-            window.removeEventListener('error', handleError);
+            window.removeEventListener("error", handleError);
         };
     }, []);
 
     // Reset error state when data or chart type changes
     useEffect(() => {
         setRenderError(false);
-    }, [chartType, data]);
+    }, [chartType, filteredData]);
 
-    if (!data) {
+    if (!filteredData) {
         return <div>No data available</div>;
     }
 
@@ -230,7 +525,7 @@ export default function DataVisualizer({
         const MAX_DATA_POINTS = 1000; // Threshold for downsampling
 
         // Validate and clean data to prevent errors
-        const sanitizedDatasets = data.datasets.map((dataset) => {
+        const sanitizedDatasets = filteredData.datasets.map((dataset) => {
             // Ensure data array doesn't contain invalid values
             const cleanData = dataset.data
                 .map((value) =>
@@ -249,7 +544,7 @@ export default function DataVisualizer({
 
         // Downsample labels if necessary
         const downsampledLabels = downsampleLabels(
-            data.labels || [],
+            filteredData.labels || [],
             MAX_DATA_POINTS
         );
 
@@ -257,7 +552,7 @@ export default function DataVisualizer({
             labels: downsampledLabels,
             datasets: sanitizedDatasets,
         };
-    }, [data]);
+    }, [filteredData]);
 
     // Calculate visible data range based on zoom slider
     const visibleDataRange = useMemo(() => {
@@ -284,8 +579,11 @@ export default function DataVisualizer({
         if (chartType === "scatter" || chartType === "bubble") {
             return {
                 datasets: sanitizedData.datasets.map((dataset, index) => {
-                    const visibleData = dataset.data.slice(startIndex, endIndex + 1);
-                    
+                    const visibleData = dataset.data.slice(
+                        startIndex,
+                        endIndex + 1
+                    );
+
                     // For scatter plots, convert to {x, y} format
                     if (chartType === "scatter") {
                         return {
@@ -298,7 +596,7 @@ export default function DataVisualizer({
                             borderColor: getDatasetColor(index, false),
                         };
                     }
-                    
+
                     // For bubble charts, include a random size (r) property
                     return {
                         label: dataset.label,
@@ -322,7 +620,8 @@ export default function DataVisualizer({
                 data: dataset.data.slice(startIndex, endIndex + 1),
                 backgroundColor: getDatasetColor(index, true),
                 borderColor: getDatasetColor(index, false),
-                borderWidth: chartType === "line" || chartType === "area" ? 2 : 0,
+                borderWidth:
+                    chartType === "line" || chartType === "area" ? 2 : 0,
                 // Completely disable tension to prevent rendering errors
                 tension: 0,
                 fill: chartType === "area" ? true : false,
@@ -336,7 +635,7 @@ export default function DataVisualizer({
     // Determine the actual chart type to pass to Chart.js
     const actualChartType = useMemo(() => {
         const tooFewPointsForCurves = sanitizedData.labels.length <= 3;
-        
+
         switch (chartType) {
             case "line":
                 // If too few points, use bar chart to avoid curve rendering issues
@@ -424,7 +723,7 @@ export default function DataVisualizer({
                 line: {
                     borderWidth: sanitizedData.labels.length > 1000 ? 1 : 2, // Thinner lines for large datasets
                     tension: 0, // Force straight lines with no tension for all line charts
-                    capBezierPoints: false, // Don't try to cap bezier curve points 
+                    capBezierPoints: false, // Don't try to cap bezier curve points
                 },
                 point: {
                     // Hide points completely for extremely large datasets to improve performance
@@ -439,7 +738,9 @@ export default function DataVisualizer({
         setShowChartOptions(!showChartOptions);
     };
 
-    const selectChartType = (type: "line" | "bar" | "area" | "scatter" | "bubble") => {
+    const selectChartType = (
+        type: "line" | "bar" | "area" | "scatter" | "bubble"
+    ) => {
         setChartType(type);
         setShowChartOptions(false);
     };
@@ -476,47 +777,47 @@ export default function DataVisualizer({
 
     const copyChartToClipboard = async () => {
         if (!chartRef.current || !chartContainerRef.current) return;
-        
+
         try {
             // Get chart canvas
             const canvas = chartRef.current.canvas;
-            
+
             // Create a new canvas with background
-            const exportCanvas = document.createElement('canvas');
+            const exportCanvas = document.createElement("canvas");
             exportCanvas.width = canvas.width;
             exportCanvas.height = canvas.height;
-            const ctx = exportCanvas.getContext('2d');
-            
+            const ctx = exportCanvas.getContext("2d");
+
             if (!ctx) return;
-            
+
             // Fill background
-            ctx.fillStyle = '#111827'; // Dark background matching the theme
+            ctx.fillStyle = "#111827"; // Dark background matching the theme
             ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-            
+
             // Draw the original canvas content onto the export canvas
             ctx.drawImage(canvas, 0, 0);
-            
+
             // Convert to blob
-            const blob = await new Promise<Blob | null>(resolve => {
-                exportCanvas.toBlob(resolve, 'image/png');
+            const blob = await new Promise<Blob | null>((resolve) => {
+                exportCanvas.toBlob(resolve, "image/png");
             });
-            
+
             if (!blob) {
-                throw new Error('Failed to create image');
+                throw new Error("Failed to create image");
             }
-            
+
             // Copy to clipboard using Clipboard API
             await navigator.clipboard.write([
                 new ClipboardItem({
-                    [blob.type]: blob
-                })
+                    [blob.type]: blob,
+                }),
             ]);
-            
-            setCopyStatus('success');
+
+            setCopyStatus("success");
             setTimeout(() => setCopyStatus(null), 2000);
         } catch (err) {
-            console.error('Failed to copy chart:', err);
-            setCopyStatus('error');
+            console.error("Failed to copy chart:", err);
+            setCopyStatus("error");
             setTimeout(() => setCopyStatus(null), 2000);
         }
     };
@@ -524,14 +825,23 @@ export default function DataVisualizer({
     // Function to add a new comparison view
     const addComparisonView = () => {
         if (comparisonViews.length >= 4) return; // Maximum of 4 views
-        
+
         // Cycle through different chart types for each new view
-        const chartTypes: Array<"line" | "bar" | "area" | "scatter" | "bubble"> = ["line", "bar", "area", "scatter", "bubble"];
+        const chartTypes: Array<
+            "line" | "bar" | "area" | "scatter" | "bubble"
+        > = ["line", "bar", "area", "scatter", "bubble"];
         const nextType = chartTypes[comparisonViews.length % chartTypes.length];
-        
-        setComparisonViews([...comparisonViews, createDefaultView(nextType, comparisonViews.length, data.datasets)]);
+
+        setComparisonViews([
+            ...comparisonViews,
+            createDefaultView(
+                nextType,
+                comparisonViews.length,
+                filteredData.datasets
+            ),
+        ]);
     };
-    
+
     // Function to remove a comparison view
     const removeComparisonView = (id: string) => {
         if (comparisonViews.length <= 1) {
@@ -539,71 +849,226 @@ export default function DataVisualizer({
             setComparisonMode(false);
             return;
         }
-        
-        setComparisonViews(comparisonViews.filter(view => view.id !== id));
+
+        setComparisonViews(comparisonViews.filter((view) => view.id !== id));
     };
-    
+
     // Function to update a comparison view
-    const updateComparisonView = (id: string, updates: Partial<ComparisonView>) => {
+    const updateComparisonView = (
+        id: string,
+        updates: Partial<ComparisonView>
+    ) => {
         setComparisonViews(
-            comparisonViews.map(view => 
+            comparisonViews.map((view) =>
                 view.id === id ? { ...view, ...updates } : view
             )
         );
     };
-    
+
+    // Apply filters to a specific comparison view
+    const toggleViewFilter = (viewId: string, field: string, value: string) => {
+        setComparisonViews((prev) =>
+            prev.map((view) => {
+                if (view.id !== viewId) return view;
+
+                const currentFilters = view.activeFilters || {};
+                const currentFieldFilters = currentFilters[field] || [];
+                let newFieldFilters: string[];
+
+                // Toggle the filter value
+                if (currentFieldFilters.includes(value)) {
+                    newFieldFilters = currentFieldFilters.filter(
+                        (v) => v !== value
+                    );
+                } else {
+                    newFieldFilters = [...currentFieldFilters, value];
+                }
+
+                // Create updated filters
+                const newFilters = { ...currentFilters };
+
+                if (newFieldFilters.length === 0) {
+                    delete newFilters[field];
+                } else {
+                    newFilters[field] = newFieldFilters;
+                }
+
+                return {
+                    ...view,
+                    activeFilters:
+                        Object.keys(newFilters).length === 0
+                            ? undefined
+                            : newFilters,
+                };
+            })
+        );
+    };
+
+    // Clear all filters for a specific view
+    const clearViewFilters = (viewId: string) => {
+        setComparisonViews((prev) =>
+            prev.map((view) =>
+                view.id !== viewId
+                    ? view
+                    : { ...view, activeFilters: undefined }
+            )
+        );
+    };
+
     // Toggle comparison mode
     const toggleComparisonMode = () => {
         const newMode = !comparisonMode;
         setComparisonMode(newMode);
-        
+
         if (!newMode) {
             // When exiting comparison mode, clear views
             setComparisonViews([]);
         }
     };
-    
+
     // Function to cycle through grid layouts
     const cycleGridLayout = () => {
         if (gridLayout === "2x2") setGridLayout("2x1");
         else if (gridLayout === "2x1") setGridLayout("1x2");
         else setGridLayout("2x2");
     };
-    
+
     // Generate chart for comparison view
     const renderComparisonChart = (view: ComparisonView) => {
+        // Apply view-specific filters if they exist
+        const viewFilteredData = useMemo(() => {
+            if (
+                !filteredData ||
+                !view.activeFilters ||
+                Object.keys(view.activeFilters).length === 0
+            ) {
+                return filteredData;
+            }
+
+            try {
+                // Start with the already globally filtered data
+                const viewFilteredLabels: string[] = [];
+                const viewFilteredDatasets = filteredData.datasets.map(
+                    (ds) => ({
+                        ...ds,
+                        data: [] as number[],
+                    })
+                );
+
+                // Determine which indices to keep based on view filters
+                const labelFilters = view.activeFilters["label"] || [];
+
+                filteredData.labels.forEach((label, index) => {
+                    // Check if this index should be included based on filters
+                    let shouldInclude = true;
+
+                    // Apply label filters
+                    if (
+                        labelFilters.length > 0 &&
+                        !labelFilters.includes(label)
+                    ) {
+                        shouldInclude = false;
+                    }
+
+                    // Apply dataset-specific filters - ensure activeFilters exists before using Object.entries
+                    if (view.activeFilters) {
+                        for (const [
+                            datasetName,
+                            filterValues,
+                        ] of Object.entries(view.activeFilters)) {
+                            if (datasetName === "label") continue; // Already handled above
+
+                            // Find the dataset with this name
+                            const datasetIndex =
+                                filteredData.datasets.findIndex(
+                                    (ds) => ds.label === datasetName
+                                );
+                            if (datasetIndex !== -1) {
+                                const value = String(
+                                    filteredData.datasets[datasetIndex].data[
+                                        index
+                                    ]
+                                );
+                                if (
+                                    filterValues.length > 0 &&
+                                    !filterValues.includes(value)
+                                ) {
+                                    shouldInclude = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (shouldInclude) {
+                        viewFilteredLabels.push(label);
+                        // Add corresponding data points for each dataset
+                        filteredData.datasets.forEach((ds, dsIndex) => {
+                            viewFilteredDatasets[dsIndex].data.push(
+                                ds.data[index]
+                            );
+                        });
+                    }
+                });
+
+                return {
+                    ...filteredData,
+                    labels: viewFilteredLabels,
+                    datasets: viewFilteredDatasets,
+                };
+            } catch (error) {
+                console.error("Error applying view filters:", error);
+                return filteredData;
+            }
+        }, [filteredData, view.activeFilters]);
+
         // Create a filtered version of chartData including only selected datasets
         const filteredChartData = {
-            labels: chartData.labels,
-            datasets: view.selectedDatasets.map(index => 
-                chartData.datasets[index]
-            )
+            labels: viewFilteredData.labels,
+            datasets: view.selectedDatasets.map((index) => {
+                if (index >= viewFilteredData.datasets.length) {
+                    // Protection against out-of-bounds dataset indices
+                    return chartData.datasets[0];
+                }
+                return viewFilteredData.datasets[index];
+            }),
         };
-        
-        const tooFewPointsForCurves = sanitizedData.labels.length <= 3;
+
+        const tooFewPointsForCurves = viewFilteredData.labels.length <= 3;
         let actualType = view.chartType;
-        
+
         // Safety checks for chart type
-        if ((view.chartType === "line" || view.chartType === "area") && tooFewPointsForCurves) {
+        if (
+            (view.chartType === "line" || view.chartType === "area") &&
+            tooFewPointsForCurves
+        ) {
             actualType = "bar";
         }
-        
+
         if (view.chartType === "area") {
             actualType = "line"; // Area is just a line with fill=true
         }
-        
+
         return (
             <Chart
                 type={actualType as any}
-                data={{
-                    labels: filteredChartData.labels,
-                    datasets: filteredChartData.datasets.map((dataset, index) => ({
-                        ...dataset,
-                        borderWidth: view.chartType === "line" || view.chartType === "area" ? 2 : 0,
-                        tension: 0, // Disable tension for all charts to prevent errors
-                        fill: view.chartType === "area" ? true : false,
-                    })),
-                } as any}
+                data={
+                    {
+                        labels: filteredChartData.labels,
+                        datasets: filteredChartData.datasets.map(
+                            (dataset, index) => ({
+                                ...dataset,
+                                borderWidth:
+                                    view.chartType === "line" ||
+                                    view.chartType === "area"
+                                        ? 2
+                                        : 0,
+                                tension: 0, // Disable tension for all charts to prevent errors
+                                fill: view.chartType === "area" ? true : false,
+                            })
+                        ),
+                    } as any
+                }
                 options={{
                     ...options,
                     maintainAspectRatio: false,
@@ -615,49 +1080,69 @@ export default function DataVisualizer({
                             color: "rgba(255, 255, 255, 0.9)",
                             font: {
                                 size: 14,
-                                weight: 'bold'
-                            }
+                                weight: "bold",
+                            },
                         },
                         legend: {
                             ...options.plugins?.legend,
-                            position: 'bottom' as const,
-                        }
-                    }
+                            position: "bottom" as const,
+                        },
+                        subtitle: {
+                            display:
+                                !!view.activeFilters &&
+                                Object.keys(view.activeFilters).length > 0,
+                            text: view.activeFilters
+                                ? `Filtered: ${Object.keys(
+                                      view.activeFilters
+                                  ).join(", ")}`
+                                : "",
+                            color: "rgba(59, 130, 246, 0.9)", // Blue color
+                            font: {
+                                size: 11,
+                                style: "italic",
+                            },
+                        },
+                    },
                 }}
                 className="w-full h-full"
             />
         );
     };
-    
+
     // Function to toggle a dataset in a comparison view
     const toggleDatasetInView = (viewId: string, datasetIndex: number) => {
         setComparisonViews(
-            comparisonViews.map(view => {
+            comparisonViews.map((view) => {
                 if (view.id !== viewId) return view;
-                
+
                 const isSelected = view.selectedDatasets.includes(datasetIndex);
                 let newSelectedDatasets: number[];
-                
+
                 if (isSelected) {
                     // Remove dataset if it's already selected
-                    newSelectedDatasets = view.selectedDatasets.filter(i => i !== datasetIndex);
+                    newSelectedDatasets = view.selectedDatasets.filter(
+                        (i) => i !== datasetIndex
+                    );
                     // Ensure at least one dataset is selected
                     if (newSelectedDatasets.length === 0) {
                         return view;
                     }
                 } else {
                     // Add dataset if it's not already selected
-                    newSelectedDatasets = [...view.selectedDatasets, datasetIndex];
+                    newSelectedDatasets = [
+                        ...view.selectedDatasets,
+                        datasetIndex,
+                    ];
                 }
-                
+
                 return {
                     ...view,
-                    selectedDatasets: newSelectedDatasets
+                    selectedDatasets: newSelectedDatasets,
                 };
             })
         );
     };
-    
+
     // Function to toggle settings for a chart
     const toggleSettings = (id: string) => {
         setOpenSettingsId(openSettingsId === id ? null : id);
@@ -665,6 +1150,103 @@ export default function DataVisualizer({
 
     return (
         <div className="w-full h-full">
+            {/* Filter Section */}
+            {Object.keys(availableFilters).length > 0 && (
+                <div className="mb-4 bg-gray-800 rounded-lg p-3">
+                    <div
+                        className="flex justify-between items-center cursor-pointer"
+                        onClick={() => setShowFilters(!showFilters)}
+                    >
+                        <div className="flex items-center">
+                            <Filter className="h-5 w-5 mr-2 text-blue-400" />
+                            <h3 className="text-sm font-medium text-white">
+                                Filters{" "}
+                                {Object.keys(activeFilters).length > 0 && (
+                                    <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded-full ml-2">
+                                        {
+                                            Object.values(activeFilters).flat()
+                                                .length
+                                        }
+                                    </span>
+                                )}
+                            </h3>
+                        </div>
+                        <button className="text-gray-400 hover:text-white">
+                            {showFilters ? (
+                                <ChevronUp className="h-5 w-5" />
+                            ) : (
+                                <ChevronDown className="h-5 w-5" />
+                            )}
+                        </button>
+                    </div>
+
+                    {showFilters && (
+                        <div className="mt-3">
+                            <div className="flex justify-between mb-2">
+                                <span className="text-xs text-gray-400">
+                                    Filter data by categorical values
+                                </span>
+                                {Object.keys(activeFilters).length > 0 && (
+                                    <button
+                                        onClick={clearFilters}
+                                        className="text-xs text-blue-400 hover:text-blue-300"
+                                    >
+                                        Clear all
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="space-y-3">
+                                {Object.entries(availableFilters).map(
+                                    ([field, values]) => (
+                                        <div
+                                            key={field}
+                                            className="border-t border-gray-700 pt-2"
+                                        >
+                                            <h4 className="text-sm font-medium text-gray-300 mb-1">
+                                                {field}
+                                            </h4>
+                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                {values
+                                                    .slice(0, 15)
+                                                    .map((value) => (
+                                                        <button
+                                                            key={`${field}-${value}`}
+                                                            className={`text-xs px-2 py-1 rounded-full ${
+                                                                activeFilters[
+                                                                    field
+                                                                ]?.includes(
+                                                                    value
+                                                                )
+                                                                    ? "bg-blue-600 text-white"
+                                                                    : "bg-gray-700 text-gray-300"
+                                                            }`}
+                                                            onClick={() =>
+                                                                toggleFilter(
+                                                                    field,
+                                                                    value
+                                                                )
+                                                            }
+                                                        >
+                                                            {value}
+                                                        </button>
+                                                    ))}
+                                                {values.length > 15 && (
+                                                    <span className="text-xs text-gray-400 px-2 py-1">
+                                                        +{values.length - 15}{" "}
+                                                        more
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+
             <div className="flex justify-between mb-2 items-center">
                 <div className="text-sm text-gray-300">
                     {sanitizedData.labels && sanitizedData.labels.length > 0
@@ -681,86 +1263,147 @@ export default function DataVisualizer({
                         className="px-3 py-1 bg-gray-800 text-white text-sm rounded hover:bg-gray-700 transition-colors flex items-center"
                         title="Copy chart as image"
                     >
-                        {copyStatus === 'success' ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        {copyStatus === "success" ? (
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-5 w-5 text-green-400"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                            >
+                                <path
+                                    fillRule="evenodd"
+                                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                    clipRule="evenodd"
+                                />
                             </svg>
-                        ) : copyStatus === 'error' ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                        ) : copyStatus === "error" ? (
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                className="h-5 w-5 text-red-400"
+                                viewBox="0 0 20 20"
+                                fill="currentColor"
+                            >
+                                <path
+                                    fillRule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                                    clipRule="evenodd"
+                                />
                             </svg>
                         ) : (
                             <Copy className="h-5 w-5" />
                         )}
                     </button>
-                    
+
                     <button
                         onClick={toggleComparisonMode}
                         className={`px-3 py-1 text-white text-sm rounded hover:bg-gray-700 transition-colors flex items-center ${
-                            comparisonMode ? 'bg-blue-600' : 'bg-gray-800'
+                            comparisonMode ? "bg-blue-600" : "bg-gray-800"
                         }`}
                         title="Compare"
                     >
                         <Grid2X2 className="h-5 w-5" />
                     </button>
-                    
+
                     {!comparisonMode && (
                         <div className="relative">
                             <button
                                 onClick={toggleChartOptions}
                                 className="px-3 py-1 bg-gray-800 text-white text-sm rounded hover:bg-gray-700 transition-colors flex items-center"
                             >
-                                <span className="mr-1">{
-                                    chartType === "line" ? "Line Chart" : 
-                                    chartType === "bar" ? "Bar Chart" : 
-                                    chartType === "area" ? "Area Chart" : 
-                                    chartType === "scatter" ? "Scatter Plot" : 
-                                    "Bubble Chart"
-                                }</span>
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                <span className="mr-1">
+                                    {chartType === "line"
+                                        ? "Line Chart"
+                                        : chartType === "bar"
+                                        ? "Bar Chart"
+                                        : chartType === "area"
+                                        ? "Area Chart"
+                                        : chartType === "scatter"
+                                        ? "Scatter Plot"
+                                        : "Bubble Chart"}
+                                </span>
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-4 w-4"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                >
+                                    <path
+                                        fillRule="evenodd"
+                                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                                        clipRule="evenodd"
+                                    />
                                 </svg>
                             </button>
-                            
+
                             {showChartOptions && (
                                 <div className="absolute right-0 mt-1 bg-gray-800 border border-gray-700 rounded shadow-lg z-10 w-40">
                                     <ul className="py-1">
                                         <li>
-                                            <button 
-                                                onClick={() => selectChartType("line")}
-                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "line" ? "bg-gray-700" : ""}`}
+                                            <button
+                                                onClick={() =>
+                                                    selectChartType("line")
+                                                }
+                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${
+                                                    chartType === "line"
+                                                        ? "bg-gray-700"
+                                                        : ""
+                                                }`}
                                             >
                                                 Line Chart
                                             </button>
                                         </li>
                                         <li>
-                                            <button 
-                                                onClick={() => selectChartType("area")}
-                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "area" ? "bg-gray-700" : ""}`}
+                                            <button
+                                                onClick={() =>
+                                                    selectChartType("area")
+                                                }
+                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${
+                                                    chartType === "area"
+                                                        ? "bg-gray-700"
+                                                        : ""
+                                                }`}
                                             >
                                                 Area Chart
                                             </button>
                                         </li>
                                         <li>
-                                            <button 
-                                                onClick={() => selectChartType("bar")}
-                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "bar" ? "bg-gray-700" : ""}`}
+                                            <button
+                                                onClick={() =>
+                                                    selectChartType("bar")
+                                                }
+                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${
+                                                    chartType === "bar"
+                                                        ? "bg-gray-700"
+                                                        : ""
+                                                }`}
                                             >
                                                 Bar Chart
                                             </button>
                                         </li>
                                         <li>
-                                            <button 
-                                                onClick={() => selectChartType("scatter")}
-                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "scatter" ? "bg-gray-700" : ""}`}
+                                            <button
+                                                onClick={() =>
+                                                    selectChartType("scatter")
+                                                }
+                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${
+                                                    chartType === "scatter"
+                                                        ? "bg-gray-700"
+                                                        : ""
+                                                }`}
                                             >
                                                 Scatter Plot
                                             </button>
                                         </li>
                                         <li>
-                                            <button 
-                                                onClick={() => selectChartType("bubble")}
-                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${chartType === "bubble" ? "bg-gray-700" : ""}`}
+                                            <button
+                                                onClick={() =>
+                                                    selectChartType("bubble")
+                                                }
+                                                className={`block px-4 py-2 text-sm w-full text-left hover:bg-gray-700 ${
+                                                    chartType === "bubble"
+                                                        ? "bg-gray-700"
+                                                        : ""
+                                                }`}
                                             >
                                                 Bubble Chart
                                             </button>
@@ -770,7 +1413,7 @@ export default function DataVisualizer({
                             )}
                         </div>
                     )}
-                    
+
                     {comparisonMode && (
                         <>
                             <button
@@ -780,7 +1423,7 @@ export default function DataVisualizer({
                             >
                                 <GridIcon className="h-5 w-5" />
                             </button>
-                            
+
                             {comparisonViews.length < 4 && (
                                 <button
                                     onClick={addComparisonView}
@@ -797,8 +1440,8 @@ export default function DataVisualizer({
 
             {!comparisonMode ? (
                 // Standard single chart view
-                <div 
-                    ref={chartContainerRef} 
+                <div
+                    ref={chartContainerRef}
                     className="h-[420px] w-full bg-gray-900"
                 >
                     {renderError ? (
@@ -811,16 +1454,24 @@ export default function DataVisualizer({
                                     visibleDataRange.startIndex,
                                     visibleDataRange.endIndex + 1
                                 ),
-                                datasets: sanitizedData.datasets.map((dataset, index) => ({
-                                    label: dataset.label,
-                                    data: dataset.data.slice(
-                                        visibleDataRange.startIndex,
-                                        visibleDataRange.endIndex + 1
-                                    ),
-                                    backgroundColor: getDatasetColor(index, true),
-                                    borderColor: getDatasetColor(index, false),
-                                    borderWidth: 1
-                                })),
+                                datasets: sanitizedData.datasets.map(
+                                    (dataset, index) => ({
+                                        label: dataset.label,
+                                        data: dataset.data.slice(
+                                            visibleDataRange.startIndex,
+                                            visibleDataRange.endIndex + 1
+                                        ),
+                                        backgroundColor: getDatasetColor(
+                                            index,
+                                            true
+                                        ),
+                                        borderColor: getDatasetColor(
+                                            index,
+                                            false
+                                        ),
+                                        borderWidth: 1,
+                                    })
+                                ),
                             }}
                             options={{
                                 responsive: true,
@@ -828,20 +1479,24 @@ export default function DataVisualizer({
                                 animation: { duration: 0 }, // No animation for better stability
                                 elements: {
                                     line: { tension: 0 }, // No tension
-                                    point: { radius: 0 } // No points
+                                    point: { radius: 0 }, // No points
                                 },
                                 scales: {
                                     y: {
                                         beginAtZero: true,
-                                        ticks: { color: "rgba(255, 255, 255, 0.7)" },
-                                        grid: { color: "rgba(255, 255, 255, 0.1)" },
+                                        ticks: {
+                                            color: "rgba(255, 255, 255, 0.7)",
+                                        },
+                                        grid: {
+                                            color: "rgba(255, 255, 255, 0.1)",
+                                        },
                                     },
                                     x: {
-                                        ticks: { 
+                                        ticks: {
                                             color: "rgba(255, 255, 255, 0.7)",
                                             maxRotation: 0,
                                             autoSkip: true,
-                                            maxTicksLimit: 10
+                                            maxTicksLimit: 10,
                                         },
                                         grid: { display: false },
                                     },
@@ -866,25 +1521,41 @@ export default function DataVisualizer({
                 </div>
             ) : (
                 // Multi-chart comparison view
-                <div className={`grid gap-4 h-[700px] w-full
-                    ${gridLayout === "2x2" ? "grid-cols-1 md:grid-cols-2 grid-rows-2" : 
-                      gridLayout === "2x1" ? "grid-cols-1 grid-rows-2" :
-                      "grid-cols-1 md:grid-cols-2 grid-rows-1"}`}
+                <div
+                    className={`grid gap-4 h-[700px] w-full
+                    ${
+                        gridLayout === "2x2"
+                            ? "grid-cols-1 md:grid-cols-2 grid-rows-2"
+                            : gridLayout === "2x1"
+                            ? "grid-cols-1 grid-rows-2"
+                            : "grid-cols-1 md:grid-cols-2 grid-rows-1"
+                    }`}
                 >
                     {comparisonViews.map((view) => (
-                        <div key={view.id} className="bg-gray-900 rounded-lg overflow-hidden flex flex-col">
+                        <div
+                            key={view.id}
+                            className="bg-gray-900 rounded-lg overflow-hidden flex flex-col"
+                        >
                             <div className="p-2 flex justify-between items-center bg-gray-800">
                                 <button
-                                    onClick={() => updateComparisonView(view.id, { 
-                                        chartType: view.chartType === "line" ? "bar" : 
-                                                view.chartType === "bar" ? "area" :
-                                                view.chartType === "area" ? "scatter" : "line"
-                                    })}
+                                    onClick={() =>
+                                        updateComparisonView(view.id, {
+                                            chartType:
+                                                view.chartType === "line"
+                                                    ? "bar"
+                                                    : view.chartType === "bar"
+                                                    ? "area"
+                                                    : view.chartType === "area"
+                                                    ? "scatter"
+                                                    : "line",
+                                        })
+                                    }
                                     className="text-xs px-2 py-1 rounded bg-gray-700 text-white"
                                 >
-                                    {view.chartType.charAt(0).toUpperCase() + view.chartType.slice(1)}
+                                    {view.chartType.charAt(0).toUpperCase() +
+                                        view.chartType.slice(1)}
                                 </button>
-                                
+
                                 <div className="flex space-x-1">
                                     <button
                                         onClick={() => toggleSettings(view.id)}
@@ -892,64 +1563,191 @@ export default function DataVisualizer({
                                     >
                                         <Settings className="h-4 w-4" />
                                     </button>
-                                    
+
                                     <button
-                                        onClick={() => removeComparisonView(view.id)}
+                                        onClick={() =>
+                                            removeComparisonView(view.id)
+                                        }
                                         className="p-1 rounded hover:bg-gray-700"
                                     >
                                         <X className="h-4 w-4" />
                                     </button>
                                 </div>
                             </div>
-                            
+
                             {openSettingsId === view.id && (
                                 <div className="p-2 bg-gray-800 rounded-md mb-2">
                                     <div className="flex justify-between items-center mb-2">
                                         <input
                                             type="text"
                                             value={view.title}
-                                            onChange={(e) => updateComparisonView(view.id, { title: e.target.value })}
+                                            onChange={(e) =>
+                                                updateComparisonView(view.id, {
+                                                    title: e.target.value,
+                                                })
+                                            }
                                             className="bg-gray-700 text-white text-sm px-2 py-1 rounded w-1/2"
                                             placeholder="Chart Title"
                                         />
                                         <div className="flex gap-1">
-                                            {["line", "bar", "area", "scatter"].map((type) => (
+                                            {[
+                                                "line",
+                                                "bar",
+                                                "area",
+                                                "scatter",
+                                            ].map((type) => (
                                                 <button
                                                     key={type}
-                                                    className={`text-xs px-2 py-1 rounded ${view.chartType === type 
-                                                        ? 'bg-blue-600 text-white' 
-                                                        : 'bg-gray-700 text-gray-300'}`}
-                                                    onClick={() => updateComparisonView(view.id, { 
-                                                        chartType: type as "line" | "bar" | "area" | "scatter" | "bubble" 
-                                                    })}
+                                                    className={`text-xs px-2 py-1 rounded ${
+                                                        view.chartType === type
+                                                            ? "bg-blue-600 text-white"
+                                                            : "bg-gray-700 text-gray-300"
+                                                    }`}
+                                                    onClick={() =>
+                                                        updateComparisonView(
+                                                            view.id,
+                                                            {
+                                                                chartType:
+                                                                    type as
+                                                                        | "line"
+                                                                        | "bar"
+                                                                        | "area"
+                                                                        | "scatter"
+                                                                        | "bubble",
+                                                            }
+                                                        )
+                                                    }
                                                 >
-                                                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                                                    {type
+                                                        .charAt(0)
+                                                        .toUpperCase() +
+                                                        type.slice(1)}
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
-                                    <div className="flex flex-wrap gap-1 mt-1">
-                                        {data.datasets.map((dataset, index) => (
-                                            <button
-                                                key={index}
-                                                className={`text-xs px-2 py-1 rounded ${view.selectedDatasets.includes(index) 
-                                                    ? 'bg-blue-600 text-white' 
-                                                    : 'bg-gray-700 text-gray-300'}`}
-                                                onClick={() => toggleDatasetInView(view.id, index)}
-                                            >
-                                                {dataset.label}
-                                            </button>
-                                        ))}
+
+                                    {/* Dataset selector */}
+                                    <div className="mb-3">
+                                        <h4 className="text-xs font-medium text-gray-400 mb-1">
+                                            Datasets
+                                        </h4>
+                                        <div className="flex flex-wrap gap-1 mt-1">
+                                            {filteredData.datasets.map(
+                                                (dataset, index) => (
+                                                    <button
+                                                        key={index}
+                                                        className={`text-xs px-2 py-1 rounded ${
+                                                            view.selectedDatasets.includes(
+                                                                index
+                                                            )
+                                                                ? "bg-blue-600 text-white"
+                                                                : "bg-gray-700 text-gray-300"
+                                                        }`}
+                                                        onClick={() =>
+                                                            toggleDatasetInView(
+                                                                view.id,
+                                                                index
+                                                            )
+                                                        }
+                                                    >
+                                                        {dataset.label}
+                                                    </button>
+                                                )
+                                            )}
+                                        </div>
                                     </div>
+
+                                    {/* View-specific filters */}
+                                    {Object.keys(availableFilters).length >
+                                        0 && (
+                                        <div className="mt-3 border-t border-gray-700 pt-2">
+                                            <div className="flex justify-between items-center">
+                                                <h4 className="text-xs font-medium text-gray-400">
+                                                    View-specific filters
+                                                </h4>
+                                                {view.activeFilters &&
+                                                    Object.keys(
+                                                        view.activeFilters
+                                                    ).length > 0 && (
+                                                        <button
+                                                            onClick={() =>
+                                                                clearViewFilters(
+                                                                    view.id
+                                                                )
+                                                            }
+                                                            className="text-xs text-blue-400 hover:text-blue-300"
+                                                        >
+                                                            Clear
+                                                        </button>
+                                                    )}
+                                            </div>
+
+                                            <div className="space-y-2 mt-2 max-h-36 overflow-y-auto">
+                                                {Object.entries(
+                                                    availableFilters
+                                                ).map(([field, values]) => (
+                                                    <div
+                                                        key={field}
+                                                        className="border-t border-gray-700 pt-1"
+                                                    >
+                                                        <h5 className="text-xs font-medium text-gray-300">
+                                                            {field}
+                                                        </h5>
+                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                            {values
+                                                                .slice(0, 8)
+                                                                .map(
+                                                                    (value) => (
+                                                                        <button
+                                                                            key={`${field}-${value}`}
+                                                                            className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                                                                view.activeFilters?.[
+                                                                                    field
+                                                                                ]?.includes(
+                                                                                    value
+                                                                                )
+                                                                                    ? "bg-blue-600 text-white"
+                                                                                    : "bg-gray-700 text-gray-300"
+                                                                            }`}
+                                                                            onClick={() =>
+                                                                                toggleViewFilter(
+                                                                                    view.id,
+                                                                                    field,
+                                                                                    value
+                                                                                )
+                                                                            }
+                                                                        >
+                                                                            {
+                                                                                value
+                                                                            }
+                                                                        </button>
+                                                                    )
+                                                                )}
+                                                            {values.length >
+                                                                8 && (
+                                                                <span className="text-xs text-gray-400 px-1.5 py-0.5">
+                                                                    +
+                                                                    {values.length -
+                                                                        8}{" "}
+                                                                    more
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
-                            
+
                             <div className="flex-grow min-h-0">
                                 {renderComparisonChart(view)}
                             </div>
                         </div>
                     ))}
-                    
+
                     {/* Empty slot for adding a new chart */}
                     {comparisonViews.length < 4 && (
                         <button
