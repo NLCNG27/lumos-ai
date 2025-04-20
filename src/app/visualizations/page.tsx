@@ -403,6 +403,7 @@ export default function VisualizationsPage() {
                                     onSelectDataset={handleSelectDataset}
                                     onSaveCurrentDataset={handleSaveDataset}
                                     hasCurrentDataset={!!data && !isLoading}
+                                    onClose={() => setShowDatasetSidebar(false)}
                                 />
                             </div>
                         )}

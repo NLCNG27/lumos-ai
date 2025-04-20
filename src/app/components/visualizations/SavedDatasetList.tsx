@@ -22,12 +22,14 @@ interface SavedDatasetListProps {
     onSelectDataset: (dataset: SavedDataset) => void;
     onSaveCurrentDataset: () => void;
     hasCurrentDataset: boolean;
+    onClose: () => void;
 }
 
 export default function SavedDatasetList({
     onSelectDataset,
     onSaveCurrentDataset,
     hasCurrentDataset,
+    onClose,
 }: SavedDatasetListProps) {
     const [datasets, setDatasets] = useState<SavedDataset[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -233,15 +235,24 @@ export default function SavedDatasetList({
         <div className="bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
             <div className="p-3 border-b border-gray-800 flex justify-between items-center">
                 <h3 className="font-medium">Saved Datasets</h3>
-                {hasCurrentDataset && (
+                <div className="flex items-center space-x-2">
+                    {hasCurrentDataset && (
+                        <button
+                            onClick={onSaveCurrentDataset}
+                            className="flex items-center text-sm text-blue-500 hover:text-blue-400 transition-colors"
+                        >
+                            <PlusCircle className="mr-1 h-4 w-4" />
+                            Save Current
+                        </button>
+                    )}
                     <button
-                        onClick={onSaveCurrentDataset}
-                        className="flex items-center text-sm text-blue-500 hover:text-blue-400 transition-colors"
+                        onClick={onClose}
+                        className="p-1 text-gray-500 hover:text-gray-300 transition-colors"
+                        title="Close"
                     >
-                        <PlusCircle className="mr-1 h-4 w-4" />
-                        Save Current
+                        <X className="h-4 w-4" />
                     </button>
-                )}
+                </div>
             </div>
 
             {datasets.length === 0 ? (
