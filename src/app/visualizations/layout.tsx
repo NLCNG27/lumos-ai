@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Data Visualizations | Lumos AI",
+  title: "Data Visualizations | Lumos",
   description: "Interactive data visualizations and analytics",
 };
 

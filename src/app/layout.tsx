@@ -1,11 +1,6 @@
 import type { Metadata } from "next";
 import {
     ClerkProvider,
-    SignInButton,
-    SignUpButton,
-    SignedIn,
-    SignedOut,
-    UserButton,
 } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -30,7 +25,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-    title: "Lumos AI",
+    title: "Home | Lumos",
     description: "AI assistant for analyzing documents and data",
 };
 

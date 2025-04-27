@@ -3,7 +3,7 @@ import Navbar from "@/app/components/Navbar";
 import MainMenu from "@/app/components/MainMenu";
 
 export const metadata: Metadata = {
-    title: "News | Lumos AI",
+    title: "News | Lumos",
     description: "Some latest news",
 };
 
