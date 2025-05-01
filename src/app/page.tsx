@@ -143,7 +143,7 @@ export default function Home() {
             </main>
 
             <footer className="bg-black text-gray-500 text-center text-sm p-4 border-t border-gray-800 ml-16">
-                &copy; {new Date().getFullYear()} Lumos AI. Developed by{" "}
+                &copy; {new Date().getFullYear()} Lumos. Developed by{" "}
                 <a
                     href="https://www.cngsoftware.com/"
                     target="_blank"
