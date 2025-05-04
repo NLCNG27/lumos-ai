@@ -61,19 +61,19 @@ ChartJS.register(
 const colorPalettes = {
     // Main colors for datasets (more vibrant for primary series)
     backgroundColors: [
-        "rgba(59, 130, 246, 0.5)", // Blue
-        "rgba(16, 185, 129, 0.5)", // Green
-        "rgba(249, 115, 22, 0.5)", // Orange
-        "rgba(236, 72, 153, 0.5)", // Pink
-        "rgba(139, 92, 246, 0.5)", // Purple
-        "rgba(234, 179, 8, 0.5)", // Yellow
-        "rgba(14, 165, 233, 0.5)", // Sky
-        "rgba(244, 63, 94, 0.5)", // Rose
-        "rgba(20, 184, 166, 0.5)", // Teal
-        "rgba(168, 85, 247, 0.5)", // Violet
-        "rgba(251, 146, 60, 0.5)", // Amber
-        "rgba(45, 212, 191, 0.5)", // Cyan
-        "rgba(99, 102, 241, 0.5)", // Indigo
+        "rgba(59, 130, 246, 0.7)", // Blue
+        "rgba(16, 185, 129, 0.7)", // Green
+        "rgba(249, 115, 22, 0.7)", // Orange
+        "rgba(236, 72, 153, 0.7)", // Pink
+        "rgba(139, 92, 246, 0.7)", // Purple
+        "rgba(234, 179, 8, 0.7)", // Yellow
+        "rgba(14, 165, 233, 0.7)", // Sky
+        "rgba(244, 63, 94, 0.7)", // Rose
+        "rgba(20, 184, 166, 0.7)", // Teal
+        "rgba(168, 85, 247, 0.7)", // Violet
+        "rgba(251, 146, 60, 0.7)", // Amber
+        "rgba(45, 212, 191, 0.7)", // Cyan
+        "rgba(99, 102, 241, 0.7)", // Indigo
     ],
     // Border colors (solid versions of the background colors)
     borderColors: [
@@ -147,16 +147,30 @@ const createDefaultView = (
     index: number,
     allDatasets: any[]
 ): ComparisonView => {
+    // Select which datasets to show in this view
+    let selectedDatasets: number[];
+    
+    if (allDatasets.length <= 2) {
+        // If there are 2 or fewer datasets, select all of them
+        selectedDatasets = allDatasets.map((_, i) => i);
+    } else if (index === 0) {
+        // First view gets first dataset
+        selectedDatasets = [0]; 
+    } else if (index === 1) {
+        // Second view gets second dataset if available
+        selectedDatasets = [Math.min(1, allDatasets.length - 1)];
+    } else {
+        // Subsequent views get a rotating selection of datasets
+        selectedDatasets = [index % allDatasets.length];
+    }
+    
     return {
         id: `chart-view-${chartType}-${Date.now()}-${index}`, // Add timestamp to ensure uniqueness
         chartType,
         title: `${
             chartType.charAt(0).toUpperCase() + chartType.slice(1)
         } Chart`,
-        selectedDatasets:
-            allDatasets.length <= 2
-                ? allDatasets.map((_, i) => i) // Select all datasets if 2 or fewer
-                : [0], // Select only the first dataset if more than 2
+        selectedDatasets,
     };
 };
 
@@ -933,15 +947,12 @@ export default function DataVisualizer({
         else setGridLayout("2x2");
     };
 
-    // Generate chart for comparison view
-    const renderComparisonChart = (view: ComparisonView) => {
-        // Apply view-specific filters if they exist
-        const viewFilteredData = useMemo(() => {
-            if (
-                !filteredData ||
-                !view.activeFilters ||
-                Object.keys(view.activeFilters).length === 0
-            ) {
+    // Memoize filtered data for each comparison view to prevent conditional hooks
+    const viewsFilteredData = useMemo(() => {
+        if (!filteredData || !comparisonViews.length) return [];
+        
+        return comparisonViews.map(view => {
+            if (!view.activeFilters || Object.keys(view.activeFilters).length === 0) {
                 return filteredData;
             }
 
@@ -963,36 +974,24 @@ export default function DataVisualizer({
                     let shouldInclude = true;
 
                     // Apply label filters
-                    if (
-                        labelFilters.length > 0 &&
-                        !labelFilters.includes(label)
-                    ) {
+                    if (labelFilters.length > 0 && !labelFilters.includes(label)) {
                         shouldInclude = false;
                     }
 
                     // Apply dataset-specific filters - ensure activeFilters exists before using Object.entries
                     if (view.activeFilters) {
-                        for (const [
-                            datasetName,
-                            filterValues,
-                        ] of Object.entries(view.activeFilters)) {
+                        for (const [datasetName, filterValues] of Object.entries(view.activeFilters)) {
                             if (datasetName === "label") continue; // Already handled above
 
                             // Find the dataset with this name
-                            const datasetIndex =
-                                filteredData.datasets.findIndex(
-                                    (ds) => ds.label === datasetName
-                                );
+                            const datasetIndex = filteredData.datasets.findIndex(
+                                (ds) => ds.label === datasetName
+                            );
                             if (datasetIndex !== -1) {
                                 const value = String(
-                                    filteredData.datasets[datasetIndex].data[
-                                        index
-                                    ]
+                                    filteredData.datasets[datasetIndex].data[index]
                                 );
-                                if (
-                                    filterValues.length > 0 &&
-                                    !filterValues.includes(value)
-                                ) {
+                                if (filterValues.length > 0 && !filterValues.includes(value)) {
                                     shouldInclude = false;
                                     break;
                                 }
@@ -1004,9 +1003,7 @@ export default function DataVisualizer({
                         viewFilteredLabels.push(label);
                         // Add corresponding data points for each dataset
                         filteredData.datasets.forEach((ds, dsIndex) => {
-                            viewFilteredDatasets[dsIndex].data.push(
-                                ds.data[index]
-                            );
+                            viewFilteredDatasets[dsIndex].data.push(ds.data[index]);
                         });
                     }
                 });
@@ -1020,17 +1017,37 @@ export default function DataVisualizer({
                 console.error("Error applying view filters:", error);
                 return filteredData;
             }
-        }, [filteredData, view.activeFilters]);
+        });
+    }, [filteredData, comparisonViews]);
+
+    // Generate chart for comparison view
+    const renderComparisonChart = (view: ComparisonView, index: number) => {
+        const viewFilteredData = viewsFilteredData[index] || filteredData;
+        
+        // Handle empty or missing data gracefully
+        if (!viewFilteredData || !viewFilteredData.labels || !viewFilteredData.datasets || 
+            viewFilteredData.labels.length === 0 || viewFilteredData.datasets.length === 0) {
+            return (
+                <div className="flex items-center justify-center h-full w-full text-gray-400 text-sm">
+                    No data available for this chart
+                </div>
+            );
+        }
 
         // Create a filtered version of chartData including only selected datasets
         const filteredChartData = {
             labels: viewFilteredData.labels,
-            datasets: view.selectedDatasets.map((index) => {
-                if (index >= viewFilteredData.datasets.length) {
-                    // Protection against out-of-bounds dataset indices
-                    return chartData.datasets[0];
-                }
-                return viewFilteredData.datasets[index];
+            datasets: view.selectedDatasets.map((datasetIndex, colorIndex) => {
+                const dataset = datasetIndex >= viewFilteredData.datasets.length
+                    ? viewFilteredData.datasets[0] || chartData.datasets[0]
+                    : viewFilteredData.datasets[datasetIndex];
+                
+                // Ensure each dataset has proper colors
+                return {
+                    ...dataset,
+                    backgroundColor: getDatasetColor(colorIndex, true),
+                    borderColor: getDatasetColor(colorIndex, false),
+                };
             }),
         };
 
@@ -1049,6 +1066,295 @@ export default function DataVisualizer({
             actualType = "line"; // Area is just a line with fill=true
         }
 
+        // Special handling for scatter and bubble charts
+        if (actualType === "scatter" || actualType === "bubble") {
+            const scatterData = {
+                datasets: filteredChartData.datasets.map((dataset, idx) => ({
+                    label: dataset.label,
+                    data: dataset.data.map((value, i) => ({
+                        x: i,
+                        y: value,
+                        r: actualType === "bubble" ? Math.max(3, Math.min(10, value / 10)) : undefined
+                    })),
+                    backgroundColor: getDatasetColor(idx, true),
+                    borderColor: getDatasetColor(idx, false),
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }))
+            };
+
+            return (
+                <Chart
+                    type={actualType as any}
+                    data={scatterData as any}
+                    options={{
+                        ...options,
+                        maintainAspectRatio: false,
+                        responsive: true,
+                        scales: {
+                            ...options.scales,
+                            x: {
+                                ...options.scales?.x,
+                                ticks: {
+                                    ...options.scales?.x?.ticks,
+                                    maxTicksLimit: 6,
+                                    color: "rgba(255, 255, 255, 0.7)",
+                                }
+                            },
+                            y: {
+                                ...options.scales?.y,
+                                beginAtZero: true,
+                                ticks: {
+                                    ...options.scales?.y?.ticks,
+                                    maxTicksLimit: 6,
+                                    color: "rgba(255, 255, 255, 0.7)",
+                                }
+                            }
+                        },
+                        plugins: {
+                            ...options.plugins,
+                            title: {
+                                display: true,
+                                text: view.title,
+                                color: "rgba(255, 255, 255, 0.9)",
+                                font: {
+                                    size: 14,
+                                    weight: "bold",
+                                },
+                                padding: {
+                                    top: 5,
+                                    bottom: 5
+                                }
+                            },
+                            legend: {
+                                position: "bottom" as const,
+                                labels: {
+                                    color: "rgba(255, 255, 255, 0.7)",
+                                    boxWidth: 10,
+                                    padding: 8,
+                                    font: {
+                                        size: 10
+                                    }
+                                },
+                                display: true,
+                            },
+                            subtitle: {
+                                display:
+                                    !!view.activeFilters &&
+                                    Object.keys(view.activeFilters).length > 0,
+                                text: view.activeFilters
+                                    ? `Filtered: ${Object.keys(
+                                        view.activeFilters
+                                    ).join(", ")}`
+                                    : "",
+                                color: "rgba(59, 130, 246, 0.9)",
+                                font: {
+                                    size: 10,
+                                    style: "italic",
+                                },
+                                padding: {
+                                    bottom: 5
+                                }
+                            },
+                        },
+                    }}
+                    className="w-full h-full"
+                />
+            );
+        }
+        
+        // Special handling for bar charts
+        if (actualType === "bar") {
+            // For bar charts, ensure color arrays for multiple datasets
+            const barData = {
+                labels: filteredChartData.labels,
+                datasets: filteredChartData.datasets.map((dataset, idx) => ({
+                    ...dataset,
+                    backgroundColor: getDatasetColor(idx, true),
+                    borderColor: getDatasetColor(idx, false),
+                    borderWidth: 1,
+                    hoverBackgroundColor: getDatasetColor(idx, true).replace(/[^,]+(?=\))/, '0.8'),
+                }))
+            };
+            
+            return (
+                <Chart
+                    type="bar"
+                    data={barData as any}
+                    options={{
+                        ...options,
+                        maintainAspectRatio: false,
+                        responsive: true,
+                        scales: {
+                            ...options.scales,
+                            x: {
+                                ...options.scales?.x,
+                                ticks: {
+                                    ...options.scales?.x?.ticks,
+                                    maxTicksLimit: 6,
+                                    color: "rgba(255, 255, 255, 0.7)",
+                                }
+                            },
+                            y: {
+                                ...options.scales?.y,
+                                beginAtZero: true,
+                                ticks: {
+                                    ...options.scales?.y?.ticks,
+                                    maxTicksLimit: 6,
+                                    color: "rgba(255, 255, 255, 0.7)",
+                                }
+                            }
+                        },
+                        plugins: {
+                            ...options.plugins,
+                            title: {
+                                display: true,
+                                text: view.title,
+                                color: "rgba(255, 255, 255, 0.9)",
+                                font: {
+                                    size: 14,
+                                    weight: "bold",
+                                },
+                                padding: {
+                                    top: 5,
+                                    bottom: 5
+                                }
+                            },
+                            legend: {
+                                position: "bottom" as const,
+                                labels: {
+                                    color: "rgba(255, 255, 255, 0.7)",
+                                    boxWidth: 10,
+                                    padding: 8,
+                                    font: {
+                                        size: 10
+                                    }
+                                },
+                                display: true,
+                            },
+                            subtitle: {
+                                display:
+                                    !!view.activeFilters &&
+                                    Object.keys(view.activeFilters).length > 0,
+                                text: view.activeFilters
+                                    ? `Filtered: ${Object.keys(
+                                        view.activeFilters
+                                    ).join(", ")}`
+                                    : "",
+                                color: "rgba(59, 130, 246, 0.9)",
+                                font: {
+                                    size: 10,
+                                    style: "italic",
+                                },
+                                padding: {
+                                    bottom: 5
+                                }
+                            },
+                        },
+                    }}
+                    className="w-full h-full"
+                />
+            );
+        }
+
+        // Special handling for line and area charts
+        if (actualType === "line") {
+            const lineData = {
+                labels: filteredChartData.labels,
+                datasets: filteredChartData.datasets.map((dataset, idx) => ({
+                    ...dataset,
+                    backgroundColor: view.chartType === "area" 
+                        ? getDatasetColor(idx, true)
+                        : getDatasetColor(idx, false),
+                    borderColor: getDatasetColor(idx, false),
+                    borderWidth: 2,
+                    tension: 0,
+                    fill: view.chartType === "area" ? true : false,
+                    pointRadius: filteredChartData.labels.length > 20 ? 0 : 3,
+                    pointHoverRadius: 5,
+                }))
+            };
+            
+            return (
+                <Chart
+                    type="line"
+                    data={lineData as any}
+                    options={{
+                        ...options,
+                        maintainAspectRatio: false,
+                        responsive: true,
+                        scales: {
+                            ...options.scales,
+                            x: {
+                                ...options.scales?.x,
+                                ticks: {
+                                    ...options.scales?.x?.ticks,
+                                    maxTicksLimit: 6,
+                                    color: "rgba(255, 255, 255, 0.7)",
+                                }
+                            },
+                            y: {
+                                ...options.scales?.y,
+                                beginAtZero: true,
+                                ticks: {
+                                    ...options.scales?.y?.ticks,
+                                    maxTicksLimit: 6,
+                                    color: "rgba(255, 255, 255, 0.7)",
+                                }
+                            }
+                        },
+                        plugins: {
+                            ...options.plugins,
+                            title: {
+                                display: true,
+                                text: view.title,
+                                color: "rgba(255, 255, 255, 0.9)",
+                                font: {
+                                    size: 14,
+                                    weight: "bold",
+                                },
+                                padding: {
+                                    top: 5,
+                                    bottom: 5
+                                }
+                            },
+                            legend: {
+                                position: "bottom" as const,
+                                labels: {
+                                    color: "rgba(255, 255, 255, 0.7)",
+                                    boxWidth: 10,
+                                    padding: 8,
+                                    font: {
+                                        size: 10
+                                    }
+                                },
+                                display: true,
+                            },
+                            subtitle: {
+                                display:
+                                    !!view.activeFilters &&
+                                    Object.keys(view.activeFilters).length > 0,
+                                text: view.activeFilters
+                                    ? `Filtered: ${Object.keys(
+                                        view.activeFilters
+                                    ).join(", ")}`
+                                    : "",
+                                color: "rgba(59, 130, 246, 0.9)",
+                                font: {
+                                    size: 10,
+                                    style: "italic",
+                                },
+                                padding: {
+                                    bottom: 5
+                                }
+                            },
+                        },
+                    }}
+                    className="w-full h-full"
+                />
+            );
+        }
+
         return (
             <Chart
                 type={actualType as any}
@@ -1056,8 +1362,10 @@ export default function DataVisualizer({
                     {
                         labels: filteredChartData.labels,
                         datasets: filteredChartData.datasets.map(
-                            (dataset, index) => ({
+                            (dataset, idx) => ({
                                 ...dataset,
+                                backgroundColor: getDatasetColor(idx, true),
+                                borderColor: getDatasetColor(idx, false),
                                 borderWidth:
                                     view.chartType === "line" ||
                                     view.chartType === "area"
@@ -1065,6 +1373,9 @@ export default function DataVisualizer({
                                         : 0,
                                 tension: 0, // Disable tension for all charts to prevent errors
                                 fill: view.chartType === "area" ? true : false,
+                                // Limit number of points displayed for better performance
+                                pointRadius: filteredChartData.labels.length > 20 ? 0 : 3,
+                                hoverRadius: 5,
                             })
                         ),
                     } as any
@@ -1072,6 +1383,27 @@ export default function DataVisualizer({
                 options={{
                     ...options,
                     maintainAspectRatio: false,
+                    responsive: true,
+                    scales: {
+                        ...options.scales,
+                        x: {
+                            ...options.scales?.x,
+                            ticks: {
+                                ...options.scales?.x?.ticks,
+                                maxTicksLimit: 6,
+                                color: "rgba(255, 255, 255, 0.7)",
+                            }
+                        },
+                        y: {
+                            ...options.scales?.y,
+                            beginAtZero: true,
+                            ticks: {
+                                ...options.scales?.y?.ticks,
+                                maxTicksLimit: 6,
+                                color: "rgba(255, 255, 255, 0.7)",
+                            }
+                        }
+                    },
                     plugins: {
                         ...options.plugins,
                         title: {
@@ -1082,10 +1414,22 @@ export default function DataVisualizer({
                                 size: 14,
                                 weight: "bold",
                             },
+                            padding: {
+                                top: 5,
+                                bottom: 5
+                            }
                         },
                         legend: {
-                            ...options.plugins?.legend,
                             position: "bottom" as const,
+                            labels: {
+                                color: "rgba(255, 255, 255, 0.7)",
+                                boxWidth: 10,
+                                padding: 8,
+                                font: {
+                                    size: 10
+                                }
+                            },
+                            display: true,
                         },
                         subtitle: {
                             display:
@@ -1093,14 +1437,17 @@ export default function DataVisualizer({
                                 Object.keys(view.activeFilters).length > 0,
                             text: view.activeFilters
                                 ? `Filtered: ${Object.keys(
-                                      view.activeFilters
-                                  ).join(", ")}`
+                                    view.activeFilters
+                                ).join(", ")}`
                                 : "",
-                            color: "rgba(59, 130, 246, 0.9)", // Blue color
+                            color: "rgba(59, 130, 246, 0.9)",
                             font: {
-                                size: 11,
+                                size: 10,
                                 style: "italic",
                             },
+                            padding: {
+                                bottom: 5
+                            }
                         },
                     },
                 }}
@@ -1522,19 +1869,19 @@ export default function DataVisualizer({
             ) : (
                 // Multi-chart comparison view
                 <div
-                    className={`grid gap-4 h-[700px] w-full
+                    className={`grid gap-4 h-[600px] w-full
                     ${
                         gridLayout === "2x2"
-                            ? "grid-cols-1 md:grid-cols-2 grid-rows-2"
+                            ? "grid-cols-1 md:grid-cols-2 md:grid-rows-2"
                             : gridLayout === "2x1"
                             ? "grid-cols-1 grid-rows-2"
-                            : "grid-cols-1 md:grid-cols-2 grid-rows-1"
+                            : "grid-cols-1 md:grid-cols-2 md:grid-rows-1"
                     }`}
                 >
-                    {comparisonViews.map((view) => (
+                    {comparisonViews.map((view, index) => (
                         <div
                             key={view.id}
-                            className="bg-gray-900 rounded-lg overflow-hidden flex flex-col"
+                            className="bg-gray-900 rounded-lg overflow-hidden flex flex-col h-full"
                         >
                             <div className="p-2 flex justify-between items-center bg-gray-800">
                                 <button
@@ -1742,8 +2089,8 @@ export default function DataVisualizer({
                                 </div>
                             )}
 
-                            <div className="flex-grow min-h-0">
-                                {renderComparisonChart(view)}
+                            <div className="flex-grow min-h-0 p-2">
+                                {renderComparisonChart(view, index)}
                             </div>
                         </div>
                     ))}
